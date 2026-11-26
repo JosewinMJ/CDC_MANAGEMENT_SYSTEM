@@ -24,35 +24,9 @@ if ($method === 'GET') {
     api_json(200, ['portal' => 'student_db', 'count' => count($rows), 'data' => $rows]);
 }
 
-if ($method === 'POST') {
-    if ($token['portal_name'] !== 'student_portal') {
-        api_json(403, ['error' => 'Write access restricted to student_portal token.']);
-    }
-    $input = json_decode((string)file_get_contents('php://input'), true) ?: [];
-    $roll = trim((string)($input['roll_no'] ?? ''));
-    $name = trim((string)($input['full_name'] ?? ''));
-    $email = filter_var(trim((string)($input['email'] ?? '')), FILTER_VALIDATE_EMAIL);
-    $dept = strtoupper(trim((string)($input['department'] ?? '')));
-    $pass = (string)($input['password'] ?? '');
-
-    if ($roll === '' || $name === '' || !$email || $dept === '' || strlen($pass) < 8) {
-        api_json(422, ['error' => 'roll_no, full_name, valid email, department, and password (8+ chars) are required.']);
-    }
-
-    $hash = Security::hashPassword($pass);
-    Database::execute(
-        "INSERT INTO students (roll_no, full_name, email, password_hash, phone, department, program, batch_year, semester, cgpa, active_backlogs, skills)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            $roll, $name, $email, $hash, $input['phone'] ?? null, $dept,
-            $input['program'] ?? 'B.Tech', (int)($input['batch_year'] ?? date('Y') + 1),
-            (int)($input['semester'] ?? 6), (float)($input['cgpa'] ?? 0),
-            (int)($input['active_backlogs'] ?? 0), $input['skills'] ?? null
-        ]
-    );
-    $id = Database::lastInsertId();
-    AuditLogger::log('API_STUDENT_CREATED', 'students', (string)$id, "Created via student_portal API ({$roll})", 'student', $id, $email);
-    api_json(201, ['message' => 'Student registered securely.', 'id' => $id]);
+if ($method !== 'GET') {
+    AuditLogger::log('API_WRITE_BLOCKED', 'students', null, "Blocked {$method} attempt by {$token['portal_name']} (Admin-only edit policy)", 'system', null, $token['portal_name']);
+    api_json(403, ['error' => 'Read-only API: Master student records can only be edited by CDC Admin.']);
 }
 
 api_json(405, ['error' => 'Method not allowed.']);
