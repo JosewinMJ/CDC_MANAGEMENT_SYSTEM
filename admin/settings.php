@@ -53,6 +53,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             AuditLogger::log('API_TOKEN_TOGGLED', 'api_tokens', (string)$id, 'Toggled token active status');
             set_flash('success', 'API token state updated.');
             redirect('settings.php');
+        } elseif ($action === 'backup_sql') {
+            $pdo = Database::getConnection();
+            $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM);
+            $sqlDump = "-- CDC Management System Full Database Backup\n-- Generated: " . date('Y-m-d H:i:s') . "\n\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+            foreach ($tables as $t) {
+                $tbl = str_replace('`', '', $t[0]);
+                $create = $pdo->query("SHOW CREATE TABLE `{$tbl}`")->fetch(PDO::FETCH_NUM);
+                $sqlDump .= "DROP TABLE IF EXISTS `{$tbl}`;\n" . $create[1] . ";\n\n";
+                $rows = $pdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($rows as $r) {
+                    $cols = array_map(static fn($c) => '`' . str_replace('`', '', $c) . '`', array_keys($r));
+                    $vals = array_map(static fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v), array_values($r));
+                    $sqlDump .= "INSERT INTO `{$tbl}` (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $vals) . ");\n";
+                }
+                $sqlDump .= "\n";
+            }
+            $sqlDump .= "SET FOREIGN_KEY_CHECKS=1;\n";
+            $fname = 'cdc_management_backup_' . date('Ymd_His') . '.sql';
+            AuditLogger::log('DB_BACKUP_DOWNLOADED', 'database', 'cdc_management', "Downloaded {$fname}");
+            header('Content-Type: application/sql; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $fname . '"');
+            header('Content-Length: ' . strlen($sqlDump));
+            echo $sqlDump;
+            exit;
         }
     } catch (Throwable $e) {
         set_flash('error', $e->getMessage());
@@ -93,6 +117,18 @@ require_once __DIR__ . '/includes/layout_top.php';
             </div>
             <button type="submit" class="w-full py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold">Update Password</button>
         </form>
+
+        <div class="mt-6 pt-5 border-t border-slate-200">
+            <h3 class="text-sm font-bold text-slate-900 mb-1">Full Database Backup (.SQL)</h3>
+            <p class="text-xs text-slate-500 mb-3">Download a complete MySQL backup (safe to restore anytime in phpMyAdmin). Master records can only be edited here in the Admin Portal.</p>
+            <form method="POST">
+                <?= Security::csrfField() ?>
+                <input type="hidden" name="action" value="backup_sql">
+                <button type="submit" class="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">
+                    Download Full .SQL Backup
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Inter-Portal API Tokens -->
