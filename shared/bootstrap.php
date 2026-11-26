@@ -11,6 +11,7 @@ $cdcConfig = require __DIR__ . '/config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Security.php';
 require_once __DIR__ . '/AuditLogger.php';
+require_once __DIR__ . '/SpreadsheetReader.php';
 require_once __DIR__ . '/CsvExcelManager.php';
 
 Database::init($cdcConfig);

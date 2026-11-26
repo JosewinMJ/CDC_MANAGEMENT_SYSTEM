@@ -212,56 +212,39 @@ final class CsvExcelManager
     }
 
     /**
-     * Parse and safely import a CSV upload into either `students` or `faculty_coordinators`.
+     * Parse and safely import any uploaded sheet (.csv, .xlsx, .xls) into Students, Faculty, or Companies.
+     * Supports scope='auto' to auto-detect target database from sheet columns, and hashes per-row initial_password if provided.
      */
-    public static function importCsv(string $scope, string $tmpFilePath, string $defaultPassword = 'Portal@1234'): array
-    {
-        if (!in_array($scope, ['students', 'faculty'], true)) {
-            throw new InvalidArgumentException('CSV import is supported for students and faculty scopes.');
+    public static function importSpreadsheet(
+        string $scope,
+        string $tmpFilePath,
+        string $extension = 'csv',
+        string $defaultPassword = 'Portal@1234'
+    ): array {
+        $parsed = SpreadsheetReader::readFile($tmpFilePath, $extension);
+        $resolvedScope = $scope === 'auto' ? SpreadsheetReader::detectScope($parsed['headers']) : $scope;
+
+        if (!in_array($resolvedScope, ['students', 'faculty', 'companies'], true)) {
+            throw new InvalidArgumentException('Sheet import supports students, faculty, or companies databases.');
         }
 
-        $fh = fopen($tmpFilePath, 'r');
-        if ($fh === false) {
-            throw new RuntimeException('Unable to read uploaded CSV file.');
-        }
-
-        // Strip UTF-8 BOM if present
-        $bom = fread($fh, 3);
-        if ($bom !== "\xEF\xBB\xBF") {
-            rewind($fh);
-        }
-
-        $rawHeaders = fgetcsv($fh);
-        if ($rawHeaders === false || count($rawHeaders) < 3) {
-            fclose($fh);
-            throw new RuntimeException('Invalid CSV header row.');
-        }
-
-        $headers = array_map(static fn($h) => strtolower(trim((string)$h)), $rawHeaders);
         $defaultHash = Security::hashPassword($defaultPassword);
         $inserted = 0;
         $updated = 0;
         $errors = [];
         $lineNum = 1;
 
-        Database::transaction(function () use ($fh, $headers, $scope, $defaultHash, &$inserted, &$updated, &$errors, &$lineNum) {
-            while (($row = fgetcsv($fh)) !== false) {
+        Database::transaction(function () use ($parsed, $resolvedScope, $defaultHash, &$inserted, &$updated, &$errors, &$lineNum) {
+            foreach ($parsed['rows'] as $assoc) {
                 $lineNum++;
-                if (count($row) === 1 && trim((string)$row[0]) === '') {
-                    continue;
-                }
-                $assoc = [];
-                foreach ($headers as $idx => $key) {
-                    $assoc[$key] = trim((string)($row[$idx] ?? ''));
-                }
 
-                if ($scope === 'students') {
+                if ($resolvedScope === 'students') {
                     $roll = $assoc['roll_no'] ?? '';
                     $name = $assoc['full_name'] ?? '';
                     $email = filter_var($assoc['email'] ?? '', FILTER_VALIDATE_EMAIL);
-                    $dept = $assoc['department'] ?? '';
+                    $dept = strtoupper($assoc['department'] ?? '');
                     if ($roll === '' || $name === '' || !$email || $dept === '') {
-                        $errors[] = "Line {$lineNum}: Missing required roll_no, full_name, valid email, or department.";
+                        $errors[] = "Row {$lineNum}: Missing required roll_no, full_name, valid email, or department.";
                         continue;
                     }
                     $existing = Database::fetchOne("SELECT * FROM students WHERE roll_no = ? OR email = ?", [$roll, $email]);
@@ -280,11 +263,14 @@ final class CsvExcelManager
                         ? (($assoc['package_lpa'] !== '') ? (float)$assoc['package_lpa'] : null)
                         : ($existing['package_lpa'] ?? null);
 
+                    $rowPass = trim((string)($assoc['initial_password'] ?? ''));
+
                     if ($existing) {
+                        $passHash = $rowPass !== '' ? Security::hashPassword($rowPass) : $existing['password_hash'];
                         Database::execute(
-                            "UPDATE students SET full_name=?, email=?, phone=?, department=?, program=?, batch_year=?, semester=?, cgpa=?, active_backlogs=?, skills=?, placement_status=?, placed_company=?, package_lpa=?, is_verified=?, portal_active=? WHERE id=?",
+                            "UPDATE students SET full_name=?, email=?, password_hash=?, phone=?, department=?, program=?, batch_year=?, semester=?, cgpa=?, active_backlogs=?, skills=?, placement_status=?, placed_company=?, package_lpa=?, is_verified=?, portal_active=? WHERE id=?",
                             [
-                                $name, $email,
+                                $name, $email, $passHash,
                                 array_key_exists('phone', $assoc) ? $assoc['phone'] : $existing['phone'],
                                 $dept,
                                 ($assoc['program'] ?? '') !== '' ? $assoc['program'] : $existing['program'],
@@ -298,11 +284,12 @@ final class CsvExcelManager
                         );
                         $updated++;
                     } else {
+                        $passHash = $rowPass !== '' ? Security::hashPassword($rowPass) : $defaultHash;
                         Database::execute(
                             "INSERT INTO students (roll_no, full_name, email, password_hash, phone, department, program, batch_year, semester, cgpa, active_backlogs, skills, placement_status, placed_company, package_lpa, is_verified, portal_active)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [
-                                $roll, $name, $email, $defaultHash, $assoc['phone'] ?? null, $dept,
+                                $roll, $name, $email, $passHash, $assoc['phone'] ?? null, $dept,
                                 ($assoc['program'] ?? '') !== '' ? $assoc['program'] : 'B.Tech', $batch, $sem, $cgpa, $backlogs,
                                 $assoc['skills'] ?? null, $status, $placedCompany, $packageLpa,
                                 (int)($assoc['is_verified'] ?? 1), (int)($assoc['portal_active'] ?? 1)
@@ -310,13 +297,13 @@ final class CsvExcelManager
                         );
                         $inserted++;
                     }
-                } else {
+                } elseif ($resolvedScope === 'faculty') {
                     $empId = $assoc['employee_id'] ?? '';
                     $name = $assoc['full_name'] ?? '';
                     $email = filter_var($assoc['email'] ?? '', FILTER_VALIDATE_EMAIL);
-                    $dept = $assoc['department'] ?? '';
+                    $dept = strtoupper($assoc['department'] ?? '');
                     if ($empId === '' || $name === '' || !$email || $dept === '') {
-                        $errors[] = "Line {$lineNum}: Missing required employee_id, full_name, valid email, or department.";
+                        $errors[] = "Row {$lineNum}: Missing required employee_id, full_name, valid email, or department.";
                         continue;
                     }
                     $existing = Database::fetchOne("SELECT * FROM faculty_coordinators WHERE employee_id = ? OR email = ?", [$empId, $email]);
@@ -324,11 +311,14 @@ final class CsvExcelManager
                         ? $assoc['coordinator_role']
                         : ($existing['coordinator_role'] ?? 'dept_coordinator');
 
+                    $rowPass = trim((string)($assoc['initial_password'] ?? ''));
+
                     if ($existing) {
+                        $passHash = $rowPass !== '' ? Security::hashPassword($rowPass) : $existing['password_hash'];
                         Database::execute(
-                            "UPDATE faculty_coordinators SET full_name=?, email=?, phone=?, department=?, designation=?, coordinator_role=?, assigned_batches=?, can_manage_drives=?, can_verify_students=?, portal_active=? WHERE id=?",
+                            "UPDATE faculty_coordinators SET full_name=?, email=?, password_hash=?, phone=?, department=?, designation=?, coordinator_role=?, assigned_batches=?, can_manage_drives=?, can_verify_students=?, portal_active=? WHERE id=?",
                             [
-                                $name, $email,
+                                $name, $email, $passHash,
                                 array_key_exists('phone', $assoc) ? $assoc['phone'] : $existing['phone'],
                                 $dept,
                                 ($assoc['designation'] ?? '') !== '' ? $assoc['designation'] : $existing['designation'],
@@ -342,14 +332,52 @@ final class CsvExcelManager
                         );
                         $updated++;
                     } else {
+                        $passHash = $rowPass !== '' ? Security::hashPassword($rowPass) : $defaultHash;
                         Database::execute(
                             "INSERT INTO faculty_coordinators (employee_id, full_name, email, password_hash, phone, department, designation, coordinator_role, assigned_batches, can_manage_drives, can_verify_students, portal_active)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [
-                                $empId, $name, $email, $defaultHash, $assoc['phone'] ?? null, $dept,
+                                $empId, $name, $email, $passHash, $assoc['phone'] ?? null, $dept,
                                 ($assoc['designation'] ?? '') !== '' ? $assoc['designation'] : 'Assistant Professor', $role,
                                 $assoc['assigned_batches'] ?? null, (int)($assoc['can_manage_drives'] ?? 0),
                                 (int)($assoc['can_verify_students'] ?? 1), (int)($assoc['portal_active'] ?? 1)
+                            ]
+                        );
+                        $inserted++;
+                    }
+                } else {
+                    $cName = $assoc['company_name'] ?? '';
+                    $industry = $assoc['industry'] ?? 'Technology';
+                    if ($cName === '') {
+                        $errors[] = "Row {$lineNum}: Missing company_name.";
+                        continue;
+                    }
+                    $existing = Database::fetchOne("SELECT * FROM companies WHERE company_name = ?", [$cName]);
+                    $tier = in_array($assoc['tier'] ?? '', ['dream', 'super_dream', 'core', 'startup', 'mass'], true)
+                        ? $assoc['tier'] : ($existing['tier'] ?? 'core');
+
+                    if ($existing) {
+                        Database::execute(
+                            "UPDATE companies SET industry=?, tier=?, website=?, hr_name=?, hr_email=?, hr_phone=?, location=?, is_verified=? WHERE id=?",
+                            [
+                                $industry, $tier,
+                                array_key_exists('website', $assoc) ? $assoc['website'] : $existing['website'],
+                                array_key_exists('hr_name', $assoc) ? $assoc['hr_name'] : $existing['hr_name'],
+                                array_key_exists('hr_email', $assoc) ? $assoc['hr_email'] : $existing['hr_email'],
+                                array_key_exists('hr_phone', $assoc) ? $assoc['hr_phone'] : $existing['hr_phone'],
+                                array_key_exists('location', $assoc) ? $assoc['location'] : $existing['location'],
+                                array_key_exists('is_verified', $assoc) ? (int)$assoc['is_verified'] : (int)$existing['is_verified'],
+                                (int)$existing['id']
+                            ]
+                        );
+                        $updated++;
+                    } else {
+                        Database::execute(
+                            "INSERT INTO companies (company_name, industry, tier, website, hr_name, hr_email, hr_phone, location, is_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [
+                                $cName, $industry, $tier, $assoc['website'] ?? null, $assoc['hr_name'] ?? null,
+                                $assoc['hr_email'] ?? null, $assoc['hr_phone'] ?? null, $assoc['location'] ?? null,
+                                (int)($assoc['is_verified'] ?? 1)
                             ]
                         );
                         $inserted++;
@@ -358,7 +386,19 @@ final class CsvExcelManager
             }
         });
 
-        fclose($fh);
-        return ['inserted' => $inserted, 'updated' => $updated, 'errors' => $errors];
+        return [
+            'detected_scope' => $resolvedScope,
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Backward-compatible wrapper for CSV-only callers.
+     */
+    public static function importCsv(string $scope, string $tmpFilePath, string $defaultPassword = 'Portal@1234'): array
+    {
+        return self::importSpreadsheet($scope, $tmpFilePath, 'csv', $defaultPassword);
     }
 }

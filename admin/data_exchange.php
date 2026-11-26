@@ -26,13 +26,13 @@ if (isset($_GET['download'])) {
 if (isset($_GET['template'])) {
     $tpl = (string)$_GET['template'];
     if ($tpl === 'students') {
-        $headers = ['roll_no', 'full_name', 'email', 'phone', 'department', 'program', 'batch_year', 'semester', 'cgpa', 'active_backlogs', 'skills', 'placement_status'];
-        $sample = [['roll_no' => '23CSE099', 'full_name' => 'Sample Student', 'email' => 'sample.s@student.cdc.edu', 'phone' => '+91-9800000001', 'department' => 'CSE', 'program' => 'B.Tech', 'batch_year' => '2027', 'semester' => '7', 'cgpa' => '8.50', 'active_backlogs' => '0', 'skills' => 'Python, SQL', 'placement_status' => 'unplaced']];
+        $headers = ['roll_no', 'full_name', 'email', 'phone', 'department', 'program', 'batch_year', 'semester', 'cgpa', 'active_backlogs', 'skills', 'placement_status', 'initial_password'];
+        $sample = [['roll_no' => '23CSE099', 'full_name' => 'Sample Student', 'email' => 'sample.s@student.cdc.edu', 'phone' => '+91-9800000001', 'department' => 'CSE', 'program' => 'B.Tech', 'batch_year' => '2027', 'semester' => '7', 'cgpa' => '8.50', 'active_backlogs' => '0', 'skills' => 'Python, SQL', 'placement_status' => 'unplaced', 'initial_password' => 'StuPass@2027']];
         $content = CsvExcelManager::buildCsvContent($headers, $sample);
         $fname = 'template_students_import.csv';
     } else {
-        $headers = ['employee_id', 'full_name', 'email', 'phone', 'department', 'designation', 'coordinator_role', 'assigned_batches', 'can_manage_drives', 'can_verify_students'];
-        $sample = [['employee_id' => 'FAC-199', 'full_name' => 'Dr. Sample Faculty', 'email' => 'sample.f@cdc.edu', 'phone' => '+91-9800000002', 'department' => 'CSE', 'designation' => 'Assistant Professor', 'coordinator_role' => 'dept_coordinator', 'assigned_batches' => '2027', 'can_manage_drives' => '1', 'can_verify_students' => '1']];
+        $headers = ['employee_id', 'full_name', 'email', 'phone', 'department', 'designation', 'coordinator_role', 'assigned_batches', 'can_manage_drives', 'can_verify_students', 'initial_password'];
+        $sample = [['employee_id' => 'FAC-199', 'full_name' => 'Dr. Sample Faculty', 'email' => 'sample.f@cdc.edu', 'phone' => '+91-9800000002', 'department' => 'CSE', 'designation' => 'Assistant Professor', 'coordinator_role' => 'dept_coordinator', 'assigned_batches' => '2027', 'can_manage_drives' => '1', 'can_verify_students' => '1', 'initial_password' => 'FacPass@2027']];
         $content = CsvExcelManager::buildCsvContent($headers, $sample);
         $fname = 'template_faculty_import.csv';
     }
@@ -50,23 +50,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'sync_snapshots') {
             $summary = CsvExcelManager::syncAllSnapshots($cdcConfig['paths']['exports']);
             set_flash('success', 'Synchronized all CSV & Excel snapshots to exports/ (' . json_encode($summary) . ').');
-        } elseif ($action === 'import_csv') {
-            $scope = post_str('scope');
+        } elseif ($action === 'import_sheet' || $action === 'import_csv') {
+            $scope = post_str('scope', 'auto');
             $defaultPass = post_str('default_password', 'Portal@1234');
-            if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
-                throw new RuntimeException('Please select a valid CSV file to upload.');
+            $fileKey = isset($_FILES['sheet_file']) ? 'sheet_file' : 'csv_file';
+            if (!isset($_FILES[$fileKey]) || $_FILES[$fileKey]['error'] !== UPLOAD_ERR_OK) {
+                throw new RuntimeException('Please select a valid .xlsx, .xls, or .csv sheet to upload.');
             }
-            $ext = strtolower(pathinfo((string)$_FILES['csv_file']['name'], PATHINFO_EXTENSION));
-            if ($ext !== 'csv') {
-                throw new InvalidArgumentException('Only .csv files are accepted for secure import (save Excel sheets as CSV UTF-8).');
+            $ext = strtolower(pathinfo((string)$_FILES[$fileKey]['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['csv', 'xlsx', 'xls'], true)) {
+                throw new InvalidArgumentException('Only .xlsx, .xls, or .csv files are accepted.');
             }
-            $res = CsvExcelManager::importCsv($scope, $_FILES['csv_file']['tmp_name'], $defaultPass ?: 'Portal@1234');
-            $fileName = basename((string)$_FILES['csv_file']['name']);
+            $res = CsvExcelManager::importSpreadsheet($scope, $_FILES[$fileKey]['tmp_name'], $ext, $defaultPass ?: 'Portal@1234');
+            $detected = $res['detected_scope'];
+            $fileName = basename((string)$_FILES[$fileKey]['name']);
+            $logFmt = $ext === 'csv' ? 'csv' : 'excel_xls';
             $summaryText = "Inserted: {$res['inserted']}, Updated: {$res['updated']}, Errors: " . count($res['errors']);
-            AuditLogger::logSync($scope, 'import', 'csv', $res['inserted'] + $res['updated'], $fileName, null, empty($res['errors']) ? 'success' : 'partial', $summaryText);
-            AuditLogger::log('CSV_IMPORT', $scope, null, "{$fileName} -> {$summaryText}");
+            AuditLogger::logSync($detected, 'import', $logFmt, $res['inserted'] + $res['updated'], $fileName, null, empty($res['errors']) ? 'success' : 'partial', $summaryText);
+            AuditLogger::log('SHEET_IMPORT', $detected, null, "{$fileName} ({$ext}) -> {$summaryText}");
 
-            $msg = "Imported {$fileName} into {$scope} database ({$summaryText}).";
+            $msg = "Auto-imported {$fileName} into '" . strtoupper($detected) . "' MySQL database ({$summaryText}). Passwords hashed with Argon2id.";
             if (!empty($res['errors'])) {
                 $msg .= ' First error: ' . $res['errors'][0];
             }
@@ -139,47 +142,54 @@ require_once __DIR__ . '/includes/layout_top.php';
     <?php endforeach; ?>
 </div>
 
-<!-- CSV Import Forms (Separate for Student DB vs Faculty DB) -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-bold text-slate-900">Import into Student Database (.CSV)</h3>
-            <a href="?template=students" class="text-xs font-medium text-indigo-600 hover:underline">Download Sample Template</a>
+<!-- Smart Universal Excel / CSV Sheet Uploader -->
+<div class="bg-white rounded-2xl border-2 border-dashed border-indigo-300 p-6 shadow-sm">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <div>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700">
+                Auto-Sync Uploader (.XLSX / .XLS / .CSV)
+            </span>
+            <h3 class="text-base font-bold text-slate-900 mt-1">Upload Excel or CSV Sheet &rarr; Automatically Added to Database</h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+                Supports Excel <code>.xlsx</code>, <code>.xls</code>, and <code>.csv</code>. Auto-detects Student vs. Faculty columns, maps flexible headers (e.g. <code>Roll Number</code>, <code>Dept</code>), and hashes optional <code>initial_password</code> rows with Argon2id into MySQL.
+            </p>
         </div>
-        <form method="POST" enctype="multipart/form-data" class="space-y-3 text-sm">
-            <?= Security::csrfField() ?>
-            <input type="hidden" name="action" value="import_csv">
-            <input type="hidden" name="scope" value="students">
-            <input type="file" name="csv_file" accept=".csv" required class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-semibold">
-            <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Default Password for New Students</label>
-                <input type="text" name="default_password" value="Portal@1234" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs">
-            </div>
-            <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
-                Upload &amp; Upsert Student CSV
-            </button>
-        </form>
+        <div class="flex flex-wrap gap-2 text-xs">
+            <a href="?template=students" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100">Student Template (.CSV)</a>
+            <a href="?template=faculty" class="px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 font-semibold hover:bg-purple-100">Faculty Template (.CSV)</a>
+        </div>
     </div>
 
-    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-bold text-slate-900">Import into Faculty Database (.CSV)</h3>
-            <a href="?template=faculty" class="text-xs font-medium text-indigo-600 hover:underline">Download Sample Template</a>
+    <form method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end text-sm">
+        <?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="import_sheet">
+
+        <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Target Database</label>
+            <select name="scope" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-medium">
+                <option value="auto" selected>Auto-Detect from Sheet Columns</option>
+                <option value="students">Student DB (students)</option>
+                <option value="faculty">Faculty DB (faculty_coordinators)</option>
+                <option value="companies">Companies Registry (companies)</option>
+            </select>
         </div>
-        <form method="POST" enctype="multipart/form-data" class="space-y-3 text-sm">
-            <?= Security::csrfField() ?>
-            <input type="hidden" name="action" value="import_csv">
-            <input type="hidden" name="scope" value="faculty">
-            <input type="file" name="csv_file" accept=".csv" required class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-50 file:text-purple-700 file:font-semibold">
-            <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Default Password for New Faculty</label>
-                <input type="text" name="default_password" value="Portal@1234" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs">
+
+        <div class="md:col-span-2">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Choose Excel (.xlsx / .xls) or .csv Sheet *</label>
+            <input type="file" name="sheet_file" accept=".csv,.xlsx,.xls" required
+                   class="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg p-1.5 bg-slate-50 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-600 file:text-white file:font-semibold">
+        </div>
+
+        <div class="flex gap-2 items-end">
+            <div class="flex-1">
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Fallback Password</label>
+                <input type="text" name="default_password" value="Portal@1234" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs">
             </div>
-            <button type="submit" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold">
-                Upload &amp; Upsert Faculty CSV
+            <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold whitespace-nowrap">
+                Upload &amp; Add to DB
             </button>
-        </form>
-    </div>
+        </div>
+    </form>
 </div>
 
 <!-- Sync History Table -->

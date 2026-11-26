@@ -119,6 +119,9 @@ require_once __DIR__ . '/includes/layout_top.php';
         <p class="text-sm text-slate-600">Manage isolated Student Portal records (Table: <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">students</code> &middot; View: <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">v_student_portal_db</code>).</p>
     </div>
     <div class="flex flex-wrap gap-2">
+        <a href="data_exchange.php" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload Excel/CSV
+        </a>
         <a href="data_exchange.php?download=students&format=csv" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
         </a>

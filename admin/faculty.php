@@ -99,6 +99,9 @@ require_once __DIR__ . '/includes/layout_top.php';
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <p class="text-sm text-slate-600">Manage isolated Faculty/Coordinator Portal database (Table: <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">faculty_coordinators</code> &middot; View: <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">v_faculty_portal_db</code>).</p>
     <div class="flex flex-wrap gap-2">
+        <a href="data_exchange.php" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload Excel/CSV
+        </a>
         <a href="data_exchange.php?download=faculty&format=csv" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
         </a>
