@@ -1,0 +1,3 @@
+# Block direct HTTP access to connector templates
+Order Deny,Allow
+Deny from all

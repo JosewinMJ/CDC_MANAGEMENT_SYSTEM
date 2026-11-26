@@ -1,0 +1,3 @@
+# Block direct HTTP access to internal shared config and classes
+Order Deny,Allow
+Deny from all

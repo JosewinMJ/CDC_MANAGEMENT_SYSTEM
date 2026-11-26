@@ -1,0 +1,14 @@
+# Runtime export snapshots (keep .htaccess)
+exports/*.csv
+exports/*.xls
+
+# Local environment overrides
+.env
+.env.local
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

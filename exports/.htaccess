@@ -1,0 +1,3 @@
+# Block direct HTTP access to raw snapshot files; serve only via authenticated PHP endpoints
+Order Deny,Allow
+Deny from all
