@@ -75,3 +75,4 @@ export const RequirePortalAuth: React.FC<RequirePortalAuthProps> = ({ portal, ch
     </>
   );
 };
+

@@ -27,3 +27,4 @@ class StudentCodingSolve extends Model
         return $this->belongsTo(CodingQuestion::class, 'coding_question_id');
     }
 }
+

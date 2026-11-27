@@ -31,3 +31,4 @@ class CodingQuestion extends Model
         return $this->hasMany(StudentCodingSolve::class);
     }
 }
+

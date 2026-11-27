@@ -151,10 +151,13 @@ export const GuidePortal: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F5F7FA] flex">
       <aside className="w-64 bg-[#142B4A] text-white flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">Faculty Mentoring</div>
-          <div className="text-base font-bold mt-0.5">CDC Guide Portal</div>
-          <div className="text-xs text-blue-200 mt-1 truncate">{currentUser.name}</div>
+        <div className="p-5 border-b border-white/10 flex items-center gap-3">
+          <img src="/christ-logo.png" alt="Christ University" className="w-10 h-10 rounded-xl bg-white p-0.5 object-contain shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 truncate">Faculty Mentoring</div>
+            <div className="text-sm font-bold mt-0.5">CDC Guide Portal</div>
+            <div className="text-[11px] text-blue-200 mt-0.5 truncate">{currentUser.name}</div>
+          </div>
         </div>
         <nav className="flex-1 p-3 space-y-1 text-xs font-medium">
           <NavLink to="/guide/dashboard" className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg ${isActive ? 'bg-[#2855A6] text-white' : 'text-blue-100 hover:bg-white/10'}`}>

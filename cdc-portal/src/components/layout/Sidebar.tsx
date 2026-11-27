@@ -110,12 +110,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       >
         {/* Institutional Top Header */}
         <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-[#142B4A] text-white">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2855A6] to-blue-400 flex items-center justify-center font-bold text-white shadow-xs">
-            CDC
-          </div>
-          <div className="leading-tight">
-            <h1 className="text-xs font-bold tracking-wider uppercase text-blue-200">
-              Career Development Centre
+          <img
+            src="/christ-logo.png"
+            alt="Christ University Logo"
+            className="w-11 h-11 rounded-xl bg-white p-0.5 object-contain shadow-xs shrink-0"
+          />
+          <div className="leading-tight min-w-0">
+            <h1 className="text-[10px] font-bold tracking-wider uppercase text-blue-200 truncate">
+              Christ University &middot; CDC
             </h1>
             <p className="text-[13px] font-semibold text-white">Student Portal</p>
           </div>

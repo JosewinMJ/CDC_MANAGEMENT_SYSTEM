@@ -82,12 +82,15 @@ export const PortalLoginPage: React.FC<PortalLoginPageProps> = ({ portal }) => {
     <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
         <div className={`bg-gradient-to-r ${meta.accent} px-6 py-6 text-white`}>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center">
-              <Icon className="w-6 h-6 text-white" />
-            </div>
+          <div className="flex items-center gap-3.5">
+            <img
+              src="/christ-logo.png"
+              alt="Christ University Logo"
+              className="w-14 h-14 rounded-xl bg-white p-1 object-contain shadow-sm shrink-0"
+            />
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/15">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/15">
+                <Icon className="w-3 h-3" />
                 {meta.badge}
               </span>
               <h1 className="text-lg font-bold mt-1">{meta.title}</h1>
@@ -153,3 +156,4 @@ export const PortalLoginPage: React.FC<PortalLoginPageProps> = ({ portal }) => {
     </div>
   );
 };
+
