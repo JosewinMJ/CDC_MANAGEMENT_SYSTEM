@@ -110,6 +110,7 @@ export interface SkillProfile {
 }
 
 export interface Document {
+  internshipId?: number;
   id: string;
   name: string;
   category: 'Resume' | '10th Marksheet' | '12th Marksheet' | 'Semester Marksheet' | 'Certificate' | 'Offer Letter' | 'Joining Letter' | 'Progress Report' | 'Completion Certificate' | 'Internship Report' | 'Other';
@@ -261,6 +262,7 @@ export interface Interview {
 }
 
 export interface InternshipApprovalStep {
+  reviewOutcome?: 'CHANGES_REQUESTED';
   stepNumber: number;
   stepName: 'Student Submission' | 'Faculty Guide Review' | 'CDC Coordinator Verification' | 'Final Approval';
   assignedRole: UserRole;

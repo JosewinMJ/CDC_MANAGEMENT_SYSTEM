@@ -21,7 +21,8 @@ function mapInternship(it: any): Internship {
     workProfile: it.work_profile || '',
     facultyGuideId: String(it.faculty_guide_id || ''),
     facultyGuideName: it.faculty_guide?.name || 'Faculty Guide',
-    status: it.status as InternshipStatus,
+    status: it.status === 'REJECTED' && it.steps?.some((step: Internship['steps'][number]) => step.reviewOutcome === 'CHANGES_REQUESTED')
+      ? InternshipStatus.CHANGES_REQUESTED : it.status as InternshipStatus,
     steps: it.steps || [],
     documents: it.documents || [],
     academicYear: it.academic_year || '2026-2027',
@@ -64,15 +65,18 @@ export const internshipService = {
     facultyGuideName: string;
     offerLetterDocName: string;
     supportingDocNames?: string[];
+    files?: Record<string, File | undefined>;
   }): Promise<Internship> {
-    const raw = await apiRequest<any>('/internships/register', {
-      method: 'POST',
-      portal: 'student',
-      body: JSON.stringify({
-        ...data,
-        jobRole: data.customRole || data.jobRole,
-      }),
-    });
+    const { files, ...values } = data;
+    const body = new FormData();
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined && !Array.isArray(value)) body.set(key, typeof value === 'boolean' ? String(Number(value)) : String(value));
+    }
+    body.set('jobRole', data.customRole || data.jobRole);
+    for (const [key, file] of Object.entries(files ?? {})) {
+      if (file) body.set(key, file);
+    }
+    const raw = await apiRequest('/internships/register', { method: 'POST', portal: 'student', body });
     return mapInternship(raw);
   },
 

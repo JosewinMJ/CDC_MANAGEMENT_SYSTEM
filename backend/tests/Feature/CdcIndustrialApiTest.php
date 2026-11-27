@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\AcademicCorrection;
 use App\Models\Internship;
 use App\Models\JobRole;
+use App\Models\StudentProfile;
+use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class CdcIndustrialApiTest extends TestCase
@@ -97,6 +100,104 @@ class CdcIndustrialApiTest extends TestCase
         $this->withToken($adminToken)
             ->get('/api/v1/admin/data-exchange/export?scope=students&format=csv')
             ->assertOk();
+    }
+
+    public function test_guide_can_verify_only_assigned_students_documents(): void
+    {
+        $guide = User::where('email', 'k.ramanathan@vit.ac.in')->firstOrFail();
+        $otherStudent = StudentProfile::where('assigned_guide_id', '!=', $guide->id)->firstOrFail();
+        $otherDocument = $otherStudent->documents()->create([
+            'name' => 'Another guide’s document',
+            'category' => 'Resume',
+            'file_url' => '/uploads/other-resume.pdf',
+        ]);
+        $student = StudentProfile::where('assigned_guide_id', $guide->id)->firstOrFail();
+        $document = $student->documents()->create([
+            'name' => 'Assigned student resume',
+            'category' => 'Resume',
+            'file_url' => '/uploads/assigned-resume.pdf',
+        ]);
+
+        Sanctum::actingAs($guide);
+        $this->getJson('/api/v1/guide/dashboard')
+            ->assertOk()
+            ->assertJsonPath('documents.0.id', $document->id)
+            ->assertJsonCount(1, 'documents');
+
+        $this->patchJson("/api/v1/documents/{$otherDocument->id}/verification", ['status' => 'VERIFIED'])
+            ->assertNotFound();
+        $this->patchJson("/api/v1/documents/{$document->id}/verification", ['status' => 'VERIFIED'])
+            ->assertOk()
+            ->assertJsonPath('verification_status', 'VERIFIED');
+        $this->patchJson("/api/v1/documents/{$document->id}/verification", ['status' => 'REJECTED'])
+            ->assertConflict();
+    }
+
+    public function test_guide_can_record_a_change_request_once_using_the_shared_review_contract(): void
+    {
+        $internship = Internship::firstOrFail();
+        $guide = User::findOrFail($internship->faculty_guide_id);
+        $endpoint = "/api/v1/internships/{$internship->id}/review";
+        Sanctum::actingAs($guide);
+
+        $this->postJson($endpoint, ['role' => 'GUIDE', 'decision' => 'CHANGES_REQUESTED'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('remarks');
+
+        $this->postJson($endpoint, [
+            'role' => 'GUIDE', 'decision' => 'CHANGES_REQUESTED', 'remarks' => 'Please add your start date.',
+        ])->assertOk()
+            ->assertJsonPath('status', 'REJECTED')
+            ->assertJsonPath('steps.1.decision', 'REJECTED')
+            ->assertJsonPath('steps.1.reviewOutcome', 'CHANGES_REQUESTED')
+            ->assertJsonPath('steps.1.remarks', 'Please add your start date.');
+
+        $this->postJson($endpoint, ['role' => 'GUIDE', 'decision' => 'APPROVED'])
+            ->assertConflict();
+    }
+
+    public function test_uploaded_evidence_and_revision_cross_all_three_portals(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $guide = User::findOrFail($student->studentProfile->assigned_guide_id);
+        $admin = User::where('email', 'cdc.admin@vit.ac.in')->firstOrFail();
+        $pdf = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('offer.pdf', "%PDF-1.4\nTest evidence");
+
+        Sanctum::actingAs($student);
+        $profileDocument = $this->post('/api/v1/students/me/documents', ['file' => $pdf(), 'category' => 'Resume'])
+            ->assertCreated()->json('id');
+        $internship = $this->post('/api/v1/internships/register', [
+            'track' => 'TRACK_1_SUMMER', 'companyName' => 'Example Co', 'jobRole' => 'Intern',
+            'startDate' => '2027-01-01', 'endDate' => '2027-02-01', 'durationWeeks' => 4, 'offer' => $pdf(),
+        ])->assertCreated()->json();
+        $id = $internship['id'];
+        $file = $internship['documents'][0]['id'];
+        $url = "/api/v1/internships/{$id}/review";
+        Sanctum::actingAs($admin);
+        $this->postJson($url, ['role' => 'ADMIN_INTERNSHIP', 'decision' => 'APPROVED'])->assertConflict();
+        $otherGuide = User::where('role', 'GUIDE')->where('id', '!=', $guide->id)->firstOrFail();
+        $student->studentProfile()->update(['assigned_guide_id' => $otherGuide->id]);
+        Sanctum::actingAs($otherGuide);
+        $this->get("/api/v1/documents/{$file}/file")->assertNotFound();
+        $this->patchJson("/api/v1/documents/{$file}/verification", ['status' => 'VERIFIED'])->assertNotFound();
+        Sanctum::actingAs($guide);
+        $this->get("/api/v1/documents/{$file}/file")->assertDownload('offer.pdf');
+        $this->patchJson("/api/v1/documents/{$file}/verification", ['status' => 'VERIFIED'])->assertOk();
+        $this->getJson('/api/v1/guide/internships')->assertJsonFragment(['verificationStatus' => 'VERIFIED']);
+        $student->studentProfile()->update(['assigned_guide_id' => $guide->id]);
+        $this->patchJson("/api/v1/documents/{$profileDocument}/verification", ['status' => 'VERIFIED'])->assertOk();
+        $this->postJson($url, ['role' => 'GUIDE', 'decision' => 'CHANGES_REQUESTED', 'remarks' => 'Clarify duties.'])->assertOk();
+        Sanctum::actingAs($student);
+        $this->getJson('/api/v1/students/me/documents')->assertJsonFragment(['verification_status' => 'VERIFIED']);
+        $this->post("/api/v1/internships/{$id}/resubmit", ['workProfile' => 'Updated duties', 'supporting' => $pdf()])
+            ->assertOk()->assertJsonPath('status', 'PENDING_GUIDE_REVIEW')->assertJsonCount(2, 'documents');
+        $this->postJson("/api/v1/internships/{$id}/resubmit", ['workProfile' => 'Duplicate'])->assertConflict();
+        Sanctum::actingAs($guide);
+        $this->postJson($url, ['role' => 'GUIDE', 'decision' => 'APPROVED'])->assertOk();
+        Sanctum::actingAs($admin);
+        $this->postJson($url, ['role' => 'ADMIN_INTERNSHIP', 'decision' => 'APPROVED'])->assertOk()->assertJsonPath('status', 'APPROVED');
+        $this->postJson($url, ['role' => 'ADMIN_INTERNSHIP', 'decision' => 'REJECTED'])->assertConflict();
     }
 
     public function test_daily_coding_challenge_workflow_and_password_change(): void

@@ -80,6 +80,8 @@ export const RegisterInternshipPage: React.FC = () => {
   const [facultyGuideName, setFacultyGuideName] = useState(student.assignedGuideName);
 
   // Step 4: Documents Upload
+  const [files, setFiles] = useState<Record<string, File | undefined>>({});
+  const [submitting, setSubmitting] = useState(false);
   const [offerLetterDoc, setOfferLetterDoc] = useState('');
   const [joiningLetterDoc, setJoiningLetterDoc] = useState('');
   const [supportingDoc, setSupportingDoc] = useState('');
@@ -113,6 +115,8 @@ export const RegisterInternshipPage: React.FC = () => {
   const handleBack = () => setStep(prev => Math.max(1, prev - 1));
 
   const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const finalRole = selectedRole === 'Other' ? customRole : selectedRole;
       const supportingDocs = [joiningLetterDoc, supportingDoc].filter(Boolean);
@@ -137,6 +141,7 @@ export const RegisterInternshipPage: React.FC = () => {
         facultyGuideName,
         offerLetterDocName: offerLetterDoc || 'Internship_Offer_Letter.pdf',
         supportingDocNames: supportingDocs,
+        files,
       });
 
       confetti({
@@ -154,7 +159,7 @@ export const RegisterInternshipPage: React.FC = () => {
       navigate('/student/internships/my-internships');
     } catch (err: any) {
       showToast({ type: 'error', title: 'Registration Failed', message: err.message });
-    }
+    } finally { setSubmitting(false); }
   };
 
   return (
@@ -508,21 +513,21 @@ export const RegisterInternshipPage: React.FC = () => {
             <FileUploader
               label="1. Official Internship Offer Letter (Mandatory):"
               helperText="PDF up to 5MB with company letterhead and HR signature"
-              onFileSelect={setOfferLetterDoc}
+              onFileSelect={(name, file) => { setOfferLetterDoc(name); setFiles(previous => ({ ...previous, offer: file })); }}
               selectedFileName={offerLetterDoc}
             />
 
             <FileUploader
               label="2. Joining Letter / Confirmation Slip (Optional):"
               helperText="PDF up to 5MB"
-              onFileSelect={setJoiningLetterDoc}
+              onFileSelect={(name, file) => { setJoiningLetterDoc(name); setFiles(previous => ({ ...previous, joining: file })); }}
               selectedFileName={joiningLetterDoc}
             />
 
             <FileUploader
               label="3. Supporting Evidence / Industry Mentor Brief (Optional):"
               helperText="PDF up to 5MB"
-              onFileSelect={setSupportingDoc}
+              onFileSelect={(name, file) => { setSupportingDoc(name); setFiles(previous => ({ ...previous, supporting: file })); }}
               selectedFileName={supportingDoc}
             />
           </div>
@@ -608,7 +613,7 @@ export const RegisterInternshipPage: React.FC = () => {
           ) : (
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={handleSubmit} disabled={submitting}
               className="flex items-center gap-1.5 px-6 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition"
             >
               <Sparkles className="w-4 h-4" />

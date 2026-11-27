@@ -38,6 +38,7 @@ export enum InternshipMode {
 }
 
 export enum InternshipStatus {
+  CHANGES_REQUESTED = 'CHANGES_REQUESTED',
   NOT_STARTED = 'NOT_STARTED',
   SUBMITTED = 'SUBMITTED',
   PENDING_GUIDE_REVIEW = 'PENDING_GUIDE_REVIEW',

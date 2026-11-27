@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CodingChallengeController;
 use App\Http\Controllers\Api\V1\GuidePortalController;
 use App\Http\Controllers\Api\V1\StudentPortalController;
+use App\Http\Controllers\Api\V1\StudentDocumentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -17,6 +18,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
+        Route::middleware('role:STUDENT,GUIDE,ADMIN')->get('/documents/{document}/file', [StudentDocumentController::class, 'download']);
+
         // Shared Read Feeds
         Route::get('/companies', [StudentPortalController::class, 'companies']);
         Route::get('/companies/{id}', [StudentPortalController::class, 'companyDetail']);
@@ -24,6 +27,10 @@ Route::prefix('v1')->group(function () {
 
         // Student Portal Scope
         Route::middleware('role:STUDENT,ADMIN')->group(function () {
+            Route::get('/students/me/documents', [StudentDocumentController::class, 'index']);
+            Route::post('/students/me/documents', [StudentDocumentController::class, 'store']);
+            Route::delete('/students/me/documents/{id}', [StudentDocumentController::class, 'destroy']);
+            Route::post('/internships/{id}/resubmit', [StudentPortalController::class, 'resubmit']);
             Route::get('/students/me', [StudentPortalController::class, 'me']);
             Route::patch('/students/me/personal', [StudentPortalController::class, 'updatePersonal']);
             Route::post('/students/me/academic-correction', [StudentPortalController::class, 'requestCorrection']);

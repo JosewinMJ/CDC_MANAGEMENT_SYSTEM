@@ -589,7 +589,7 @@ export const AdminPortal: React.FC = () => {
 
                 <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
                   <h2 className="text-sm font-bold text-[#142B4A]">CDC Coordinator Final Internship Approvals</h2>
-                  {internships.map(it => (
+                  {internships.filter(it => ['GUIDE_APPROVED', 'PENDING_CDC_APPROVAL'].includes(it.status)).map(it => (
                     <div key={it.id} className="border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                       <div>
                         <div className="font-bold text-[#142B4A]">{it.company_name} — {it.job_role} ({it.track})</div>
