@@ -1,28 +1,46 @@
-# CDC Management System — Admin Portal & 3-Portal Unified Database
+# CDC Management System — Industrial 3-Portal Platform (Laravel 12 + React 19 + MySQL/phpMyAdmin)
 
-A complete, security-hardened **Career Development Centre (CDC) Admin Portal** designed for **XAMPP (Apache + MariaDB/MySQL + phpMyAdmin)** supporting **three portals**:
-1. **Admin Portal** (`/admin`) — Full CDC governance, analytics, recruiter & drive management, audit trail, and Excel/CSV sync hub.
-2. **Student Portal** — Isolated Student database (`students` table & `v_student_portal_db` view), independent CSV/Excel datasets, and token-authenticated API (`/api/students.php`).
-3. **Faculty / Coordinator Portal** — Isolated Faculty database (`faculty_coordinators` table & `v_faculty_portal_db` view), independent CSV/Excel datasets, and token-authenticated API (`/api/faculty.php`).
+A production-structured **Career Development Centre (CDC) Management System** integrating:
+1. **`backend/` — Laravel 12 + Sanctum REST API** (`/api/v1/*`) with Eloquent ORM, version-controlled migrations, role-based middleware (`STUDENT`, `GUIDE`, `ADMIN_*`), rate limiting, audit logging, 1-click `.sql` backup, and `.xlsx`/`.xls`/`.csv` auto-import/export.
+2. **`cdc-portal/` — Unified React 19 + TypeScript + Vite Frontend** containing all three portals:
+   - **Student Portal (`/student/*`)** — Dashboard, Calendar, 6-tab Profile, Eligibility Checker, Applications, 3-Track Internships, LeetCode Tracker, Notices, Parent Alerts.
+   - **Guide / Faculty Portal (`/guide/*`)** — Assigned Mentees Roster, Internship Reviews, Document Verification, Guide Notice Publisher.
+   - **Admin Portal (`/admin/*`)** — Executive Recharts Dashboard, Student & Faculty Master DBs, Company/Drive Builder, Application Stage Control, Academic Correction Approvals, Universal `.xlsx`/`.csv` Auto-Sync, Audit Trail & SQL Backup.
+3. **`admin/` & `shared/` — Legacy Core PHP XAMPP Admin Portal** (preserved for direct Apache/XAMPP usage on `cdc_management`).
 
-## Key Features
-- **Unified Secure Storage Layer (`shared/`)**: All 3 portals use `shared/Database.php` (native MySQL PDO prepared statements with `ATTR_EMULATE_PREPARES => false`), `shared/Security.php` (Argon2id/Bcrypt password hashing, CSRF tokens, XSS escaping, AES-256-GCM encryption helper, rate limiting, security headers), and `shared/AuditLogger.php`.
-- **Separate Student & Faculty Excel/CSV Sharing (`admin/data_exchange.php`)**:
-  - Export separate **Student DB** and **Faculty DB** in **UTF-8 BOM `.csv`** or **Excel `.xls` (SpreadsheetML)** with CSV formula-injection neutralization.
-  - Import & upsert Student or Faculty `.csv` files with schema validation.
-  - One-click **Refresh All Portal Snapshots** into protected `exports/`.
-- **phpMyAdmin Ready (`database/cdc_schema.sql`)**: Normalized InnoDB schema with foreign keys, role-isolated views, and seeded demo records.
+---
 
-## Quick XAMPP Setup
-1. Start **Apache** and **MySQL** in the **XAMPP Control Panel**.
-2. Import `database/cdc_schema.sql` in **phpMyAdmin** (`http://localhost/phpmyadmin`) or via CLI:
-   `C:\xampp\mysql\bin\mysql.exe -u root < "d:\CDC MANAGEMENT SYSTEM\database\cdc_schema.sql"`
-3. Link or copy this folder into XAMPP `htdocs` (e.g., `C:\xampp\htdocs\cdc`).
-4. Open `http://localhost/cdc/admin/`
-   - **Default Admin Email**: `admin@cdc.edu`
-   - **Default Password**: `Admin@1234`
+## Quick Setup (Collaborators)
 
-## Pre-Seeded Inter-Portal API Tokens
-- **Student Portal**: `cdc_stu_live_9f8e7d6c5b4a3210fedcba9876543210`
-- **Faculty Portal**: `cdc_fac_live_1a2b3c4d5e6f708192a3b4c5d6e7f809`
-*(Manage or rotate tokens anytime in **Admin Portal → Settings & API Tokens**.)*
+### 1. Start XAMPP MySQL & Create Database
+Open **XAMPP Control Panel** → Start **Apache** and **MySQL**, then in **phpMyAdmin** (`http://localhost/phpmyadmin/`):
+- Create database `cdc_industrial` (or run `php artisan migrate --seed` after configuring `.env`).
+
+### 2. Backend Setup (`backend/`)
+```bash
+cd backend
+copy .env.example .env
+# Set DB_CONNECTION=mysql, DB_HOST=127.0.0.1, DB_PORT=3306, DB_DATABASE=cdc_industrial, DB_USERNAME=root, DB_PASSWORD=
+composer install
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+### 3. Frontend Setup (`cdc-portal/`)
+```bash
+cd cdc-portal
+npm install
+npm run build
+npm run dev
+```
+Or double-click **`run_industrial.bat`** on Windows to launch both servers together!
+
+---
+
+## Seeded Portal Accounts
+| Portal | Email | Password |
+| :--- | :--- | :--- |
+| **Admin Portal (`/admin`)** | `cdc.admin@vit.ac.in` | `Admin@1234` |
+| **Guide Portal (`/guide`)** | `k.ramanathan@vit.ac.in` | `Portal@1234` |
+| **Student Portal (`/student`)** | `sneha.r2023@vitstudent.ac.in` | `Portal@1234` |

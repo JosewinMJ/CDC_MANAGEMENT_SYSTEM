@@ -29,9 +29,9 @@ import { RegisterLeetCodePage } from './features/daily-coding/RegisterLeetCodePa
 import { NoticesPage } from './features/notices/NoticesPage';
 import { ParentAlertsPage } from './features/parent-alerts/ParentAlertsPage';
 
-// Future portal placeholders
-import { GuidePlaceholderPage } from './placeholders/GuidePlaceholderPage';
-import { AdminPlaceholderPage } from './placeholders/AdminPlaceholderPage';
+// Integrated Guide & Admin Portals (Laravel 12 Industrial Backend)
+import { GuidePortal } from './features/guide/GuidePortal';
+import { AdminPortal } from './features/admin/AdminPortal';
 
 export const App: React.FC = () => {
   return (
@@ -103,12 +103,10 @@ export const App: React.FC = () => {
             </Route>
 
             {/* Guide Portal Routes (Sections 4 of report) */}
-            <Route path="/guide" element={<GuidePlaceholderPage />} />
-            <Route path="/guide/*" element={<GuidePlaceholderPage />} />
+            <Route path="/guide/*" element={<GuidePortal />} />
 
             {/* Admin Portal Routes (Sections 5 of report) */}
-            <Route path="/admin" element={<AdminPlaceholderPage />} />
-            <Route path="/admin/*" element={<AdminPlaceholderPage />} />
+            <Route path="/admin/*" element={<AdminPortal />} />
 
             {/* Root & Catch-all Redirects */}
             <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
