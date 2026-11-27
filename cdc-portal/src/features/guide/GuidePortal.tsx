@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, Navigate, Link } from 'react-router-dom';
+import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import {
-  UserCheck,
   Users,
   ClipboardCheck,
   Bell,
   LayoutDashboard,
   CheckCircle2,
   XCircle,
-  ArrowLeft,
-  Lock,
+  Terminal,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../services/apiClient';
@@ -48,52 +47,46 @@ interface GuideDashboardData {
 }
 
 export const GuidePortal: React.FC = () => {
-  const { currentUser, loginWithBackend, hasBackendSession } = useAuth();
+  const { currentUser, logoutFromPortal } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState<GuideDashboardData | null>(null);
   const [internships, setInternships] = useState<GuideDashboardData['internships']>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [remarks, setRemarks] = useState<Record<number, string>>({});
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeBody, setNoticeBody] = useState('');
   const [noticeSuccess, setNoticeSuccess] = useState<string | null>(null);
-  const [loginEmail, setLoginEmail] = useState('k.ramanathan@vit.ac.in');
-  const [loginPass, setLoginPass] = useState('Portal@1234');
+  const [newQ, setNewQ] = useState({ title: '', leetcodeUrl: '', difficulty: 'Easy', dueDate: '2026-12-05' });
 
   const loadGuideData = async () => {
     try {
       setError(null);
-      const [dash, list] = await Promise.all([
-        apiRequest<GuideDashboardData>('/guide/dashboard'),
-        apiRequest<GuideDashboardData['internships']>('/guide/internships'),
+      const [dash, list, qs, lb] = await Promise.all([
+        apiRequest<GuideDashboardData>('/guide/dashboard', { portal: 'guide' }),
+        apiRequest<GuideDashboardData['internships']>('/guide/internships', { portal: 'guide' }),
+        apiRequest<any[]>('/coding-challenge/questions', { portal: 'guide' }),
+        apiRequest<any[]>('/coding-challenge/leaderboard', { portal: 'guide' }),
       ]);
       setData(dash);
       setInternships(list);
+      setQuestions(qs);
+      setLeaderboard(lb);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Connect to Laravel API to load Guide Portal.');
+      setError(e instanceof Error ? e.message : 'Unable to load Guide Portal.');
     }
   };
 
   useEffect(() => {
-    if (hasBackendSession) {
-      loadGuideData();
-    }
-  }, [hasBackendSession]);
-
-  const handleQuickLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setError(null);
-      await loginWithBackend(loginEmail, loginPass);
-      await loadGuideData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-    }
-  };
+    loadGuideData();
+  }, []);
 
   const handleReview = async (id: number, decision: 'APPROVED' | 'REJECTED') => {
     try {
       await apiRequest(`/internships/${id}/review`, {
         method: 'POST',
+        portal: 'guide',
         body: JSON.stringify({
           role: 'GUIDE',
           decision,
@@ -110,6 +103,7 @@ export const GuidePortal: React.FC = () => {
     try {
       await apiRequest(`/documents/${docId}/verification`, {
         method: 'PATCH',
+        portal: 'guide',
         body: JSON.stringify({ status, remarks: status === 'VERIFIED' ? 'Verified by Guide' : 'Re-upload clear copy' }),
       });
       await loadGuideData();
@@ -123,6 +117,7 @@ export const GuidePortal: React.FC = () => {
     try {
       await apiRequest('/guide/notices', {
         method: 'POST',
+        portal: 'guide',
         body: JSON.stringify({ title: noticeTitle, content: noticeBody, priority: 'High' }),
       });
       setNoticeTitle('');
@@ -131,6 +126,26 @@ export const GuidePortal: React.FC = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to publish notice');
     }
+  };
+
+  const handlePostQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/coding-challenge/questions', {
+        method: 'POST',
+        portal: 'guide',
+        body: JSON.stringify({ ...newQ, topics: ['DSA'] }),
+      });
+      setNewQ({ title: '', leetcodeUrl: '', difficulty: 'Easy', dueDate: '2026-12-05' });
+      await loadGuideData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to post coding question');
+    }
+  };
+
+  const handleLogout = async () => {
+    await logoutFromPortal('guide');
+    navigate('/guide/login', { replace: true });
   };
 
   return (
@@ -148,33 +163,21 @@ export const GuidePortal: React.FC = () => {
           <NavLink to="/guide/internships" className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg ${isActive ? 'bg-[#2855A6] text-white' : 'text-blue-100 hover:bg-white/10'}`}>
             <ClipboardCheck className="w-4 h-4" /> Internship Reviews
           </NavLink>
+          <NavLink to="/guide/coding" className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg ${isActive ? 'bg-[#2855A6] text-white' : 'text-blue-100 hover:bg-white/10'}`}>
+            <Terminal className="w-4 h-4" /> Daily Coding Challenge
+          </NavLink>
           <NavLink to="/guide/notices" className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg ${isActive ? 'bg-[#2855A6] text-white' : 'text-blue-100 hover:bg-white/10'}`}>
             <Bell className="w-4 h-4" /> Publish Guide Notice
           </NavLink>
         </nav>
-        <div className="p-3 border-t border-white/10 space-y-1.5 text-xs">
-          <Link to="/student/dashboard" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20">
-            <ArrowLeft className="w-3.5 h-3.5" /> Student Portal
-          </Link>
-          <Link to="/admin/dashboard" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-100">
-            <UserCheck className="w-3.5 h-3.5" /> Admin Portal
-          </Link>
+        <div className="p-3 border-t border-white/10 text-xs">
+          <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 font-semibold">
+            <LogOut className="w-3.5 h-3.5" /> Sign Out
+          </button>
         </div>
       </aside>
 
       <main className="flex-1 p-6 lg:p-8 space-y-6 overflow-y-auto">
-        {!hasBackendSession && (
-          <form onSubmit={handleQuickLogin} className="bg-white rounded-2xl border border-emerald-200 p-5 shadow-xs flex flex-col md:flex-row md:items-end gap-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700"><Lock className="w-3.5 h-3.5" /> Sign In to Laravel Guide API</div>
-              <p className="text-xs text-slate-500 mt-0.5">Authenticate via Sanctum to review assigned students and internships in MySQL.</p>
-            </div>
-            <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-300 text-xs" placeholder="Guide Email" />
-            <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-300 text-xs" placeholder="Password" />
-            <button type="submit" className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">Connect Guide Session</button>
-          </form>
-        )}
-
         {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 text-xs font-medium">{error}</div>}
 
         <Routes>
@@ -259,7 +262,7 @@ export const GuidePortal: React.FC = () => {
                         <div className="text-slate-600">
                           Student: <strong>{it.student_profile?.user?.name}</strong> ({it.student_profile?.reg_number}) &middot; {it.track} &middot; {it.mode}
                         </div>
-                        <div className="text-slate-500">Duration: {it.start_date} to {it.end_date} &middot; Current Status: <strong>{it.status}</strong></div>
+                        <div className="text-slate-500">Duration: {it.start_date} to {it.end_date} &middot; Status: <strong>{it.status}</strong></div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <input
@@ -279,6 +282,50 @@ export const GuidePortal: React.FC = () => {
                     </div>
                   ))}
                   {internships.length === 0 && <p className="text-xs text-slate-400">No internship submissions assigned yet.</p>}
+                </div>
+              </div>
+            }
+          />
+          <Route
+            path="coding"
+            element={
+              <div className="space-y-6">
+                <form onSubmit={handlePostQuestion} className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end text-xs">
+                  <input required placeholder="Problem Title (e.g. 200. Number of Islands)" value={newQ.title} onChange={e => setNewQ({ ...newQ, title: e.target.value })} className="sm:col-span-2 px-3 py-2 rounded-lg border border-slate-300" />
+                  <input type="url" required placeholder="LeetCode Problem URL" value={newQ.leetcodeUrl} onChange={e => setNewQ({ ...newQ, leetcodeUrl: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                  <select value={newQ.difficulty} onChange={e => setNewQ({ ...newQ, difficulty: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                  <button type="submit" className="py-2 px-3 rounded-lg bg-[#2855A6] text-white font-semibold">+ Post Daily Question</button>
+                </form>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2 text-xs">
+                    <h3 className="font-bold text-sm text-[#142B4A]">Posted Batch Questions ({questions.length})</h3>
+                    {questions.map(q => (
+                      <div key={q.id} className="flex justify-between items-center border-b border-slate-100 py-2">
+                        <div>
+                          <div className="font-semibold text-[#142B4A]">{q.title}</div>
+                          <div className="text-slate-400">{q.difficulty} &middot; Due {q.dueDate}</div>
+                        </div>
+                        <span className="font-bold text-[#2855A6]">{q.solvedByCount}/{q.totalStudents} solved</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2 text-xs">
+                    <h3 className="font-bold text-sm text-[#142B4A]">Student Coding Leaderboard</h3>
+                    {leaderboard.map(s => (
+                      <div key={s.id} className="flex justify-between items-center border-b border-slate-100 py-2">
+                        <div>
+                          <div className="font-semibold">{s.name} ({s.regNumber})</div>
+                          <div className="text-slate-400">{s.branch} &middot; @{s.leetcodeUsername || 'not-linked'}</div>
+                        </div>
+                        <span className="font-bold text-emerald-700">{s.postedSolved} posted solved</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             }

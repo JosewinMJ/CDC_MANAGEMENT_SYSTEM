@@ -1,35 +1,53 @@
-// Laravel 12 Sanctum API Client for CDC Management System
-const API_BASE = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
-const TOKEN_KEY = 'cdc_sanctum_token';
+// Laravel 12 Sanctum API Client (Single-Domain + Per-Portal Token Isolation)
+export type PortalScope = 'student' | 'guide' | 'admin';
 
-export function getApiBase(): string {
-  return API_BASE;
+const API_BASE =
+  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL || '/api/v1';
+
+const TOKEN_KEYS: Record<PortalScope, string> = {
+  student: 'cdc_token_student',
+  guide: 'cdc_token_guide',
+  admin: 'cdc_token_admin',
+};
+
+export function detectPortalFromPath(pathname?: string): PortalScope {
+  const path = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/student');
+  if (path.startsWith('/admin')) return 'admin';
+  if (path.startsWith('/guide')) return 'guide';
+  return 'student';
 }
 
-export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+export function getAuthToken(scope?: PortalScope): string | null {
+  const portal = scope ?? detectPortalFromPath();
+  return localStorage.getItem(TOKEN_KEYS[portal]);
 }
 
-export function setAuthToken(token: string | null): void {
+export function setAuthToken(token: string | null, scope?: PortalScope): void {
+  const portal = scope ?? detectPortalFromPath();
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_KEYS[portal], token);
   } else {
-    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEYS[portal]);
   }
 }
 
-export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAuthToken();
-  const isFormData = options.body instanceof FormData;
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit & { portal?: PortalScope } = {}
+): Promise<T> {
+  const { portal, ...fetchOpts } = options;
+  const token = getAuthToken(portal);
+  const isFormData = fetchOpts.body instanceof FormData;
+
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...((options.headers as Record<string, string>) || {}),
+    ...((fetchOpts.headers as Record<string, string>) || {}),
   };
 
   const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...fetchOpts,
     headers,
   });
 
@@ -47,13 +65,17 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   return res.json() as Promise<T>;
 }
 
-export async function downloadApiFile(path: string, fallbackFilename: string): Promise<void> {
-  const token = getAuthToken();
+export async function downloadApiFile(
+  path: string,
+  fallbackFilename: string,
+  portal: PortalScope = 'admin'
+): Promise<void> {
+  const token = getAuthToken(portal);
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
-    throw new Error(`Download failed (${res.status}). Sign in with Admin credentials first.`);
+    throw new Error(`Download failed (${res.status}). Please sign in again.`);
   }
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';

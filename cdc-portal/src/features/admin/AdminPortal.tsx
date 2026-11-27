@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, Navigate, Link } from 'react-router-dom';
+import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -9,8 +9,8 @@ import {
   ShieldCheck,
   ClipboardCheck,
   DatabaseBackup,
-  ArrowLeft,
-  Lock,
+  Terminal,
+  LogOut,
   Upload,
   Download,
   Plus,
@@ -39,7 +39,8 @@ interface AdminDashboardResp {
 }
 
 export const AdminPortal: React.FC = () => {
-  const { currentUser, loginWithBackend, hasBackendSession, logoutBackend } = useAuth();
+  const { currentUser, logoutFromPortal } = useAuth();
+  const navigate = useNavigate();
   const [dash, setDash] = useState<AdminDashboardResp | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [faculty, setFaculty] = useState<any[]>([]);
@@ -47,37 +48,33 @@ export const AdminPortal: React.FC = () => {
   const [applications, setApplications] = useState<any[]>([]);
   const [corrections, setCorrections] = useState<any[]>([]);
   const [internships, setInternships] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [audits, setAudits] = useState<{ audits: any[]; syncs: any[] }>({ audits: [], syncs: [] });
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // Quick Admin Login state
-  const [loginEmail, setLoginEmail] = useState('cdc.admin@vit.ac.in');
-  const [loginPass, setLoginPass] = useState('Admin@1234');
-
-  // Add Student form
   const [newStu, setNewStu] = useState({ reg_number: '', name: '', email: '', branch: 'CSE', current_cgpa: '8.20', active_backlogs: '0' });
-  // Add Faculty form
   const [newFac, setNewFac] = useState({ employee_id: '', name: '', email: '', department: 'CSE', designation: 'Assistant Professor', coordinator_role: 'faculty_guide' });
-  // Add Company/Drive form
   const [newComp, setNewComp] = useState({ name: '', industry: 'Cloud & AI', tier: 'dream', role_title: 'Software Engineer', package_lpa: '12.00', min_cgpa: '7.5', application_deadline: '2026-12-20' });
-  // Sheet Import form
+  const [newQ, setNewQ] = useState({ title: '', leetcodeUrl: '', difficulty: 'Easy', dueDate: '2026-12-05' });
   const [importScope, setImportScope] = useState<'auto' | 'students' | 'faculty' | 'companies'>('auto');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [fallbackPass, setFallbackPass] = useState('Portal@1234');
-  // Notice form
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', priority: 'High', target_portal: 'all' });
 
   const loadAll = async () => {
     try {
-      const [d, s, f, c, a, corr, intern, aud] = await Promise.all([
-        apiRequest<AdminDashboardResp>('/admin/dashboard'),
-        apiRequest<any[]>('/admin/students'),
-        apiRequest<any[]>('/admin/faculty'),
-        apiRequest<any[]>('/companies'),
-        apiRequest<any[]>('/admin/applications'),
-        apiRequest<any[]>('/admin/corrections'),
-        apiRequest<any[]>('/guide/internships'),
-        apiRequest<{ audits: any[]; syncs: any[] }>('/admin/audit-logs'),
+      const [d, s, f, c, a, corr, intern, qs, lb, aud] = await Promise.all([
+        apiRequest<AdminDashboardResp>('/admin/dashboard', { portal: 'admin' }),
+        apiRequest<any[]>('/admin/students', { portal: 'admin' }),
+        apiRequest<any[]>('/admin/faculty', { portal: 'admin' }),
+        apiRequest<any[]>('/companies', { portal: 'admin' }),
+        apiRequest<any[]>('/admin/applications', { portal: 'admin' }),
+        apiRequest<any[]>('/admin/corrections', { portal: 'admin' }),
+        apiRequest<any[]>('/guide/internships', { portal: 'admin' }),
+        apiRequest<any[]>('/coding-challenge/questions', { portal: 'admin' }),
+        apiRequest<any[]>('/coding-challenge/leaderboard', { portal: 'admin' }),
+        apiRequest<{ audits: any[]; syncs: any[] }>('/admin/audit-logs', { portal: 'admin' }),
       ]);
       setDash(d);
       setStudents(s);
@@ -86,27 +83,21 @@ export const AdminPortal: React.FC = () => {
       setApplications(a);
       setCorrections(corr);
       setInternships(intern);
+      setQuestions(qs);
+      setLeaderboard(lb);
       setAudits(aud);
     } catch (e) {
-      setStatusMsg({ type: 'err', text: e instanceof Error ? e.message : 'Sign in with CDC Admin credentials to manage MySQL.' });
+      setStatusMsg({ type: 'err', text: e instanceof Error ? e.message : 'Unable to load Admin data.' });
     }
   };
 
   useEffect(() => {
-    if (hasBackendSession && currentUser.role.startsWith('ADMIN')) {
-      loadAll();
-    }
-  }, [hasBackendSession, currentUser.role]);
+    loadAll();
+  }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setStatusMsg(null);
-      await loginWithBackend(loginEmail, loginPass);
-      await loadAll();
-    } catch (err) {
-      setStatusMsg({ type: 'err', text: err instanceof Error ? err.message : 'Admin login failed' });
-    }
+  const handleLogout = async () => {
+    await logoutFromPortal('admin');
+    navigate('/admin/login', { replace: true });
   };
 
   const handleCreateStudent = async (e: React.FormEvent) => {
@@ -114,6 +105,7 @@ export const AdminPortal: React.FC = () => {
     try {
       await apiRequest('/admin/students', {
         method: 'POST',
+        portal: 'admin',
         body: JSON.stringify({
           ...newStu,
           current_cgpa: parseFloat(newStu.current_cgpa),
@@ -130,8 +122,8 @@ export const AdminPortal: React.FC = () => {
 
   const handleDeleteStudent = async (id: number) => {
     try {
-      await apiRequest(`/admin/students/${id}`, { method: 'DELETE' });
-      setStatusMsg({ type: 'ok', text: 'Student soft-deleted (archived safely).' });
+      await apiRequest(`/admin/students/${id}`, { method: 'DELETE', portal: 'admin' });
+      setStatusMsg({ type: 'ok', text: 'Student archived safely (soft delete).' });
       await loadAll();
     } catch (err) {
       setStatusMsg({ type: 'err', text: err instanceof Error ? err.message : 'Delete failed' });
@@ -141,7 +133,7 @@ export const AdminPortal: React.FC = () => {
   const handleCreateFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiRequest('/admin/faculty', { method: 'POST', body: JSON.stringify(newFac) });
+      await apiRequest('/admin/faculty', { method: 'POST', portal: 'admin', body: JSON.stringify(newFac) });
       setNewFac({ employee_id: '', name: '', email: '', department: 'CSE', designation: 'Assistant Professor', coordinator_role: 'faculty_guide' });
       setStatusMsg({ type: 'ok', text: 'Faculty/Guide added to Faculty DB.' });
       await loadAll();
@@ -155,6 +147,7 @@ export const AdminPortal: React.FC = () => {
     try {
       await apiRequest('/admin/companies', {
         method: 'POST',
+        portal: 'admin',
         body: JSON.stringify({
           ...newComp,
           package_lpa: parseFloat(newComp.package_lpa),
@@ -170,10 +163,27 @@ export const AdminPortal: React.FC = () => {
     }
   };
 
+  const handlePostQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/coding-challenge/questions', {
+        method: 'POST',
+        portal: 'admin',
+        body: JSON.stringify({ ...newQ, topics: ['DSA'] }),
+      });
+      setNewQ({ title: '', leetcodeUrl: '', difficulty: 'Easy', dueDate: '2026-12-05' });
+      setStatusMsg({ type: 'ok', text: 'Daily Coding Challenge question posted for students.' });
+      await loadAll();
+    } catch (err) {
+      setStatusMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to post coding question' });
+    }
+  };
+
   const handleAdvanceApp = async (appId: number, status: string) => {
     try {
       await apiRequest(`/admin/applications/${appId}/stage`, {
         method: 'PATCH',
+        portal: 'admin',
         body: JSON.stringify({ status, remarks: `Updated to ${status} by CDC Admin` }),
       });
       setStatusMsg({ type: 'ok', text: `Application #${appId} moved to ${status}.` });
@@ -187,6 +197,7 @@ export const AdminPortal: React.FC = () => {
     try {
       await apiRequest(`/admin/corrections/${id}`, {
         method: 'PATCH',
+        portal: 'admin',
         body: JSON.stringify({ status, remarks: status === 'APPROVED' ? 'Verified against official grade sheet' : 'Rejected by CDC Admin' }),
       });
       setStatusMsg({ type: 'ok', text: `Academic correction #${id} ${status}.` });
@@ -200,6 +211,7 @@ export const AdminPortal: React.FC = () => {
     try {
       await apiRequest(`/internships/${id}/review`, {
         method: 'POST',
+        portal: 'admin',
         body: JSON.stringify({ role: 'ADMIN_INTERNSHIP', decision, remarks: `Coordinator final decision: ${decision}` }),
       });
       setStatusMsg({ type: 'ok', text: `Internship #${id} ${decision}.` });
@@ -219,6 +231,7 @@ export const AdminPortal: React.FC = () => {
       fd.append('default_password', fallbackPass);
       const res = await apiRequest<{ detected_scope: string; inserted: number; updated: number; errors: string[] }>('/admin/data-exchange/import', {
         method: 'POST',
+        portal: 'admin',
         body: fd,
       });
       setStatusMsg({
@@ -235,7 +248,7 @@ export const AdminPortal: React.FC = () => {
   const handlePublishNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiRequest('/admin/notices', { method: 'POST', body: JSON.stringify(noticeForm) });
+      await apiRequest('/admin/notices', { method: 'POST', portal: 'admin', body: JSON.stringify(noticeForm) });
       setNoticeForm({ title: '', content: '', priority: 'High', target_portal: 'all' });
       setStatusMsg({ type: 'ok', text: 'Institutional notice broadcasted.' });
       await loadAll();
@@ -246,7 +259,6 @@ export const AdminPortal: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] flex">
-      {/* Admin Sidebar */}
       <aside className="w-64 bg-[#142B4A] text-white flex flex-col shrink-0">
         <div className="p-5 border-b border-white/10">
           <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">Laravel 12 + Sanctum</div>
@@ -259,6 +271,7 @@ export const AdminPortal: React.FC = () => {
             { to: '/admin/students', label: 'Student Master DB', icon: GraduationCap },
             { to: '/admin/faculty', label: 'Faculty & Guides DB', icon: Users },
             { to: '/admin/drives', label: 'Companies & Drives', icon: Building2 },
+            { to: '/admin/coding', label: 'Daily Coding Challenge', icon: Terminal },
             { to: '/admin/internships', label: 'Approvals & Corrections', icon: ClipboardCheck },
             { to: '/admin/data-exchange', label: 'Excel / CSV Auto-Sync', icon: FileSpreadsheet },
             { to: '/admin/audit', label: 'Audit Logs & Backup', icon: ShieldCheck },
@@ -280,36 +293,13 @@ export const AdminPortal: React.FC = () => {
           <a href="http://localhost/phpmyadmin/" target="_blank" rel="noreferrer" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
             Open phpMyAdmin
           </a>
-          <div className="flex gap-1.5">
-            <Link to="/student/dashboard" className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-white/10 hover:bg-white/20">
-              <ArrowLeft className="w-3 h-3" /> Student
-            </Link>
-            <Link to="/guide/dashboard" className="flex-1 text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
-              Guide
-            </Link>
-          </div>
-          {hasBackendSession && (
-            <button onClick={logoutBackend} className="w-full py-1.5 rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30">
-              Sign Out Sanctum
-            </button>
-          )}
+          <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 font-semibold">
+            <LogOut className="w-3.5 h-3.5" /> Sign Out
+          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 p-6 lg:p-8 space-y-6 overflow-y-auto">
-        {(!hasBackendSession || !currentUser.role.startsWith('ADMIN')) && (
-          <form onSubmit={handleLogin} className="bg-white rounded-2xl border border-purple-200 p-5 shadow-xs flex flex-col md:flex-row md:items-end gap-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700"><Lock className="w-3.5 h-3.5" /> Admin-Only Master Edit Authentication (Sanctum)</div>
-              <p className="text-xs text-slate-500 mt-0.5">Demo: <code>cdc.admin@vit.ac.in</code> / <code>Admin@1234</code></p>
-            </div>
-            <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-300 text-xs" />
-            <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-300 text-xs" />
-            <button type="submit" className="px-4 py-2 rounded-lg bg-[#142B4A] text-white text-xs font-semibold hover:bg-[#2855A6]">Sign In as Admin</button>
-          </form>
-        )}
-
         {statusMsg && (
           <div className={`rounded-xl border px-4 py-3 text-xs font-semibold ${statusMsg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
             {statusMsg.text}
@@ -526,6 +516,51 @@ export const AdminPortal: React.FC = () => {
           />
 
           <Route
+            path="coding"
+            element={
+              <div className="space-y-6">
+                <form onSubmit={handlePostQuestion} className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end text-xs">
+                  <input required placeholder="Problem Title (e.g. 200. Number of Islands)" value={newQ.title} onChange={e => setNewQ({ ...newQ, title: e.target.value })} className="sm:col-span-2 px-3 py-2 rounded-lg border border-slate-300" />
+                  <input type="url" required placeholder="LeetCode Problem URL" value={newQ.leetcodeUrl} onChange={e => setNewQ({ ...newQ, leetcodeUrl: e.target.value })} className="sm:col-span-2 px-3 py-2 rounded-lg border border-slate-300" />
+                  <select value={newQ.difficulty} onChange={e => setNewQ({ ...newQ, difficulty: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                  <button type="submit" className="py-2 px-3 rounded-lg bg-[#2855A6] text-white font-semibold">+ Post Question</button>
+                </form>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2 text-xs">
+                    <h3 className="font-bold text-sm text-[#142B4A]">Active Daily Coding Questions ({questions.length})</h3>
+                    {questions.map(q => (
+                      <div key={q.id} className="flex justify-between items-center border-b border-slate-100 py-2">
+                        <div>
+                          <div className="font-semibold text-[#142B4A]">{q.title}</div>
+                          <div className="text-slate-400">{q.difficulty} &middot; Due {q.dueDate}</div>
+                        </div>
+                        <span className="font-bold text-[#2855A6]">{q.solvedByCount}/{q.totalStudents} solved</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2 text-xs">
+                    <h3 className="font-bold text-sm text-[#142B4A]">Batch Coding Leaderboard</h3>
+                    {leaderboard.map(s => (
+                      <div key={s.id} className="flex justify-between items-center border-b border-slate-100 py-2">
+                        <div>
+                          <div className="font-semibold">{s.name} ({s.regNumber})</div>
+                          <div className="text-slate-400">{s.branch} &middot; @{s.leetcodeUsername || 'not-linked'}</div>
+                        </div>
+                        <span className="font-bold text-emerald-700">{s.postedSolved} solved</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            }
+          />
+
+          <Route
             path="internships"
             element={
               <div className="space-y-6">
@@ -576,7 +611,7 @@ export const AdminPortal: React.FC = () => {
                   <div className="flex items-center gap-2 text-sm font-bold text-[#142B4A]">
                     <Upload className="w-4 h-4 text-[#2855A6]" /> Universal Excel / CSV Sheet Auto-Importer (.XLSX / .XLS / .CSV)
                   </div>
-                  <p className="text-xs text-slate-500">Upload any Student, Faculty, or Company sheet. Laravel auto-detects the target MySQL table, hashes optional <code>initial_password</code> rows, and forces password change on first login.</p>
+                  <p className="text-xs text-slate-500">Upload any Student, Faculty, or Company sheet. Laravel auto-detects the target MySQL table, hashes optional <code>initial_password</code> rows, and enforces password reset on first login.</p>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end text-xs">
                     <select value={importScope} onChange={e => setImportScope(e.target.value as any)} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
                       <option value="auto">Auto-Detect from Columns</option>
@@ -601,10 +636,10 @@ export const AdminPortal: React.FC = () => {
                     <div key={card.scope} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
                       <div className="font-bold text-sm text-[#142B4A]">{card.title}</div>
                       <div className="flex gap-2">
-                        <button onClick={() => downloadApiFile(`/admin/data-exchange/export?scope=${card.scope}&format=csv`, `${card.scope}.csv`)} className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold">
+                        <button onClick={() => downloadApiFile(`/admin/data-exchange/export?scope=${card.scope}&format=csv`, `${card.scope}.csv`, 'admin')} className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold">
                           <Download className="w-3.5 h-3.5" /> .CSV
                         </button>
-                        <button onClick={() => downloadApiFile(`/admin/data-exchange/export?scope=${card.scope}&format=excel`, `${card.scope}.xls`)} className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg bg-[#142B4A] text-white font-semibold">
+                        <button onClick={() => downloadApiFile(`/admin/data-exchange/export?scope=${card.scope}&format=excel`, `${card.scope}.xls`, 'admin')} className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg bg-[#142B4A] text-white font-semibold">
                           <Download className="w-3.5 h-3.5" /> Excel .XLS
                         </button>
                       </div>
@@ -638,7 +673,7 @@ export const AdminPortal: React.FC = () => {
                     <div className="text-sm font-bold text-[#142B4A]">Full MySQL Backup (.SQL)</div>
                     <p className="text-xs text-slate-500">Download the entire <code>cdc_industrial</code> database for safe archival or phpMyAdmin restore.</p>
                   </div>
-                  <button onClick={() => downloadApiFile('/admin/backup-sql', 'cdc_industrial_backup.sql')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold">
+                  <button onClick={() => downloadApiFile('/admin/backup-sql', 'cdc_industrial_backup.sql', 'admin')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold">
                     <DatabaseBackup className="w-4 h-4" /> Download .SQL Backup
                   </button>
                 </div>

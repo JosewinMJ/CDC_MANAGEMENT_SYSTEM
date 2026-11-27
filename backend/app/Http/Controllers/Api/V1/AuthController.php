@@ -75,4 +75,25 @@ class AuthController extends Controller
         AuditService::log('USER_LOGOUT', 'Auth', (string)$user?->id, 'Signed out', null, $request);
         return response()->json(['message' => 'Logged out successfully.']);
     }
+
+    public function changePassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = $request->user();
+        if (!Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['message' => 'Current password is incorrect.'], 422);
+        }
+
+        $user->update([
+            'password' => Hash::make($data['new_password']),
+            'must_change_password' => false,
+        ]);
+
+        AuditService::log('PASSWORD_CHANGED', 'Auth', (string)$user->id, 'Updated account password', null, $request);
+        return response()->json(['message' => 'Password updated successfully.']);
+    }
 }

@@ -98,4 +98,50 @@ class CdcIndustrialApiTest extends TestCase
             ->get('/api/v1/admin/data-exchange/export?scope=students&format=csv')
             ->assertOk();
     }
+
+    public function test_daily_coding_challenge_workflow_and_password_change(): void
+    {
+        $adminToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'cdc.admin@vit.ac.in',
+            'password' => 'Admin@1234',
+        ])->assertOk()->json('token');
+
+        auth()->forgetGuards();
+        $created = $this->withToken($adminToken)
+            ->postJson('/api/v1/coding-challenge/questions', [
+                'title' => '200. Number of Islands',
+                'leetcodeUrl' => 'https://leetcode.com/problems/number-of-islands/',
+                'difficulty' => 'Medium',
+                'topics' => ['Graphs'],
+                'dueDate' => now()->addDays(5)->toDateString(),
+            ])
+            ->assertStatus(201)
+            ->json();
+
+        $studentToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+        ])->assertOk()->json('token');
+
+        auth()->forgetGuards();
+        $this->withToken($studentToken)
+            ->postJson("/api/v1/coding-challenge/posted-questions/{$created['id']}/toggle")
+            ->assertOk()
+            ->assertJsonPath('isSolved', true);
+
+        auth()->forgetGuards();
+        $this->withToken($studentToken)
+            ->getJson('/api/v1/coding-challenge/profile')
+            ->assertOk()
+            ->assertJsonPath('username', 'sneha_dev');
+
+        auth()->forgetGuards();
+        $this->withToken($studentToken)
+            ->postJson('/api/v1/auth/change-password', [
+                'current_password' => 'Portal@1234',
+                'new_password' => 'SnehaNew@2027',
+                'new_password_confirmation' => 'SnehaNew@2027',
+            ])
+            ->assertOk();
+    }
 }

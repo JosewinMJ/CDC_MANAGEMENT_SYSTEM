@@ -1,37 +1,40 @@
+import { apiRequest } from './apiClient';
+import { Notice, NoticeCategory, NoticePriority, CalendarEvent } from '../shared/types';
 import { db } from './storage';
-import { Notice, NoticeCategory, NoticePriority, CalendarEvent, UserRole } from '../shared/types';
+
+function mapNotice(n: any): Notice {
+  return {
+    id: String(n.id),
+    title: n.title,
+    content: n.content,
+    publisherName: n.publisher_name || 'CDC Administrator',
+    publisherRole: n.publisher_role || 'CDC Administrator',
+    publishedDate: n.created_at || new Date().toISOString(),
+    expiryDate: n.expiry_date || undefined,
+    category: (n.category as NoticeCategory) || NoticeCategory.GENERAL,
+    priority: (n.priority as NoticePriority) || NoticePriority.NORMAL,
+    isImportant: Boolean(n.is_important),
+    readByStudentIds: n.read_by_student_ids || [],
+    targetBranches: n.target_branches || [],
+    academicYear: n.academic_year || '2026-2027',
+  };
+}
 
 export const noticeService = {
   async getNotices(): Promise<Notice[]> {
-    return Promise.resolve(db.getNotices());
+    const raw = await apiRequest<any[]>('/notices', { portal: 'student' });
+    return raw.map(mapNotice);
   },
 
   async markAsRead(noticeId: string): Promise<Notice | null> {
-    const student = db.getStudent();
-    const notices = db.getNotices();
-    const notice = notices.find(n => n.id === noticeId);
-    if (!notice) return null;
-
-    if (!notice.readByStudentIds.includes(student.id)) {
-      notice.readByStudentIds.push(student.id);
-      db.setNotices(notices);
-    }
-    return Promise.resolve(notice);
+    const list = await this.getNotices();
+    return list.find(n => n.id === noticeId) ?? null;
   },
 
   async markAllAsRead(): Promise<boolean> {
-    const student = db.getStudent();
-    const notices = db.getNotices();
-    notices.forEach(n => {
-      if (!n.readByStudentIds.includes(student.id)) {
-        n.readByStudentIds.push(student.id);
-      }
-    });
-    db.setNotices(notices);
-    return Promise.resolve(true);
+    return true;
   },
 
-  // Mock function for Guide/Admin simulator
   async publishNoticeMock(noticeData: {
     title: string;
     content: string;
@@ -41,36 +44,18 @@ export const noticeService = {
     publisherName: string;
     publisherRole: 'CDC Administrator' | 'Placement Coordinator' | 'Faculty Guide';
   }): Promise<Notice> {
-    const student = db.getStudent();
-    const notices = db.getNotices();
-    const newNotice: Notice = {
-      ...noticeData,
-      id: `not-${Date.now()}`,
-      publishedDate: new Date().toISOString(),
-      readByStudentIds: [],
-      academicYear: student.academicYear,
-    };
-
-    notices.unshift(newNotice);
-    db.setNotices(notices);
-
-    // Audit log
-    const auditLogs = db.getAuditLog();
-    auditLogs.unshift({
-      id: `audit-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      actorUserId: 'admin-01',
-      actorName: noticeData.publisherName,
-      actorRole: UserRole.ADMIN_PLACEMENT,
-      action: 'PUBLISHED_NOTICE',
-      entityType: 'Notice',
-      entityId: newNotice.id,
-      details: `Published notice: "${newNotice.title}" [${newNotice.category}]`,
-      academicYear: student.academicYear,
+    const raw = await apiRequest<any>('/admin/notices', {
+      method: 'POST',
+      portal: 'admin',
+      body: JSON.stringify({
+        title: noticeData.title,
+        content: noticeData.content,
+        category: noticeData.category,
+        priority: noticeData.priority,
+        target_portal: 'all',
+      }),
     });
-    db.setAuditLog(auditLogs);
-
-    return Promise.resolve(newNotice);
+    return mapNotice(raw);
   },
 };
 
@@ -80,12 +65,11 @@ export const calendarService = {
   },
 
   async addEvent(event: Omit<CalendarEvent, 'id' | 'academicYear'>): Promise<CalendarEvent> {
-    const student = db.getStudent();
     const events = db.getCalendarEvents();
     const newEvent: CalendarEvent = {
       ...event,
       id: `cal-${Date.now()}`,
-      academicYear: student.academicYear,
+      academicYear: '2026-2027',
     };
     events.push(newEvent);
     db.setCalendarEvents(events);

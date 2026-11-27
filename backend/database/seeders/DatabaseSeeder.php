@@ -5,11 +5,13 @@ namespace Database\Seeders;
 use App\Models\AcademicCorrection;
 use App\Models\Application;
 use App\Models\AuditLog;
+use App\Models\CodingQuestion;
 use App\Models\Company;
 use App\Models\FacultyProfile;
 use App\Models\Internship;
 use App\Models\JobRole;
 use App\Models\Notice;
+use App\Models\StudentCodingSolve;
 use App\Models\StudentDocument;
 use App\Models\StudentProfile;
 use App\Models\User;
@@ -375,6 +377,40 @@ class DatabaseSeeder extends Seeder
             'target_portal' => 'guide',
             'read_by_student_ids' => [],
         ]);
+
+        // 9. Daily Coding Challenge Questions (Ready for Monday Student Practice)
+        $codingQuestions = [
+            ['title' => '1. Two Sum', 'leetcode_url' => 'https://leetcode.com/problems/two-sum/', 'difficulty' => 'Easy', 'topics' => ['Arrays', 'Hashing']],
+            ['title' => '121. Best Time to Buy and Sell Stock', 'leetcode_url' => 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/', 'difficulty' => 'Easy', 'topics' => ['Arrays', 'Sliding Window']],
+            ['title' => '20. Valid Parentheses', 'leetcode_url' => 'https://leetcode.com/problems/valid-parentheses/', 'difficulty' => 'Easy', 'topics' => ['Stacks & Queues', 'Strings']],
+            ['title' => '56. Merge Intervals', 'leetcode_url' => 'https://leetcode.com/problems/merge-intervals/', 'difficulty' => 'Medium', 'topics' => ['Arrays', 'Sorting & Searching']],
+            ['title' => '102. Binary Tree Level Order Traversal', 'leetcode_url' => 'https://leetcode.com/problems/binary-tree-level-order-traversal/', 'difficulty' => 'Medium', 'topics' => ['Trees & BST', 'Stacks & Queues']],
+            ['title' => '146. LRU Cache', 'leetcode_url' => 'https://leetcode.com/problems/lru-cache/', 'difficulty' => 'Medium', 'topics' => ['Hashing', 'Linked List']],
+            ['title' => '42. Trapping Rain Water', 'leetcode_url' => 'https://leetcode.com/problems/trapping-rain-water/', 'difficulty' => 'Hard', 'topics' => ['Two Pointers', 'Dynamic Programming']],
+        ];
+        foreach ($codingQuestions as $idx => $cq) {
+            $qModel = CodingQuestion::create([
+                'title' => $cq['title'],
+                'leetcode_url' => $cq['leetcode_url'],
+                'difficulty' => $cq['difficulty'],
+                'topics' => $cq['topics'],
+                'posted_date' => now()->toDateString(),
+                'due_date' => now()->addDays(7)->toDateString(),
+                'target_branches' => ['ALL'],
+                'posted_by' => $adminSuper->id,
+            ]);
+            if ($idx < 2) {
+                StudentCodingSolve::create([
+                    'student_profile_id' => $snehaProfile->id,
+                    'coding_question_id' => $qModel->id,
+                    'title' => $qModel->title,
+                    'leetcode_url' => $qModel->leetcode_url,
+                    'difficulty' => $qModel->difficulty,
+                    'topics' => $qModel->topics,
+                    'solved_at' => now()->subDays(1),
+                ]);
+            }
+        }
 
         AuditLog::create([
             'actor_user_id' => $adminSuper->id,

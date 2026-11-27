@@ -1,15 +1,25 @@
 import React, { createContext, useContext, useState } from 'react';
 import { User, UserRole } from '../shared/types';
-import { db } from '../services/storage';
-import { apiRequest, getAuthToken, setAuthToken } from '../services/apiClient';
+import {
+  apiRequest,
+  detectPortalFromPath,
+  getAuthToken,
+  PortalScope,
+  setAuthToken,
+} from '../services/apiClient';
+
+export interface AuthenticatedUser extends User {
+  mustChangePassword?: boolean;
+}
 
 interface AuthContextType {
-  currentUser: User;
+  currentUser: AuthenticatedUser;
   currentRole: UserRole;
-  switchRole: (role: UserRole) => void;
-  loginWithBackend: (email: string, password: string) => Promise<User>;
-  logoutBackend: () => Promise<void>;
-  hasBackendSession: boolean;
+  getPortalUser: (scope: PortalScope) => AuthenticatedUser | null;
+  isPortalAuthenticated: (scope: PortalScope) => boolean;
+  loginToPortal: (scope: PortalScope, email: string, password: string) => Promise<AuthenticatedUser>;
+  logoutFromPortal: (scope?: PortalScope) => Promise<void>;
+  clearMustChangePassword: (scope: PortalScope) => void;
   isStudent: boolean;
   isGuide: boolean;
   isAdmin: boolean;
@@ -17,64 +27,108 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const BACKEND_USER_KEY = 'cdc_backend_user';
+const USER_KEYS: Record<PortalScope, string> = {
+  student: 'cdc_user_student',
+  guide: 'cdc_user_guide',
+  admin: 'cdc_user_admin',
+};
+
+function readStoredUser(scope: PortalScope): AuthenticatedUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEYS[scope]);
+    return raw ? (JSON.parse(raw) as AuthenticatedUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function roleMatchesPortal(role: UserRole, scope: PortalScope): boolean {
+  if (scope === 'student') return role === UserRole.STUDENT;
+  if (scope === 'guide') return role === UserRole.GUIDE;
+  return String(role).startsWith('ADMIN');
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    const saved = localStorage.getItem('cdc_active_role');
-    return (saved as UserRole) || UserRole.STUDENT;
-  });
+  const [, setVersion] = useState(0);
+  const bump = () => setVersion(v => v + 1);
 
-  const [backendUser, setBackendUser] = useState<User | null>(() => {
-    try {
-      const raw = localStorage.getItem(BACKEND_USER_KEY);
-      return raw ? (JSON.parse(raw) as User) : null;
-    } catch {
-      return null;
-    }
-  });
+  const activeScope = detectPortalFromPath();
+  const activeUser = readStoredUser(activeScope);
 
-  const student = db.getStudent();
-
-  const fallbackUser: User = {
-    id: currentRole === UserRole.STUDENT ? student.id : currentRole === UserRole.GUIDE ? 'guide-201' : 'admin-01',
-    name: currentRole === UserRole.STUDENT ? student.fullName : currentRole === UserRole.GUIDE ? 'Dr. K. Ramanathan' : 'Dr. S. Varma (Admin)',
-    email: currentRole === UserRole.STUDENT ? student.email : currentRole === UserRole.GUIDE ? 'k.ramanathan@vit.ac.in' : 'cdc.admin@vit.ac.in',
-    role: currentRole,
-    avatarUrl: currentRole === UserRole.STUDENT ? student.avatarUrl : undefined,
-    department: 'School of Computer Science and Engineering',
+  const fallbackUser: AuthenticatedUser = {
+    id: 'guest',
+    name: 'Guest',
+    email: '',
+    role:
+      activeScope === 'admin'
+        ? UserRole.ADMIN_SUPER
+        : activeScope === 'guide'
+        ? UserRole.GUIDE
+        : UserRole.STUDENT,
   };
 
-  const currentUser: User = backendUser && backendUser.role === currentRole ? backendUser : fallbackUser;
+  const currentUser = activeUser ?? fallbackUser;
+  const currentRole = currentUser.role;
 
-  const switchRole = (role: UserRole) => {
-    setCurrentRole(role);
-    localStorage.setItem('cdc_active_role', role);
+  const getPortalUser = (scope: PortalScope): AuthenticatedUser | null => readStoredUser(scope);
+
+  const isPortalAuthenticated = (scope: PortalScope): boolean => {
+    const token = getAuthToken(scope);
+    const user = readStoredUser(scope);
+    return Boolean(token && user && roleMatchesPortal(user.role, scope));
   };
 
-  const loginWithBackend = async (email: string, password: string): Promise<User> => {
-    const res = await apiRequest<{ token: string; user: User }>('/auth/login', {
+  const loginToPortal = async (
+    scope: PortalScope,
+    email: string,
+    password: string
+  ): Promise<AuthenticatedUser> => {
+    const res = await apiRequest<{ token: string; user: AuthenticatedUser }>('/auth/login', {
       method: 'POST',
+      portal: scope,
       body: JSON.stringify({ email, password }),
     });
-    setAuthToken(res.token);
-    localStorage.setItem(BACKEND_USER_KEY, JSON.stringify(res.user));
-    setBackendUser(res.user);
-    switchRole(res.user.role);
+
+    if (!roleMatchesPortal(res.user.role, scope)) {
+      // Revoke issued token if user tried signing into the wrong portal
+      await fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${res.token}`,
+        },
+      }).catch(() => {});
+      const label = scope === 'admin' ? 'CDC Admin' : scope === 'guide' ? 'Faculty Guide' : 'Student';
+      throw new Error(`Access denied: This login screen is restricted to ${label} accounts.`);
+    }
+
+    setAuthToken(res.token, scope);
+    localStorage.setItem(USER_KEYS[scope], JSON.stringify(res.user));
+    bump();
     return res.user;
   };
 
-  const logoutBackend = async (): Promise<void> => {
+  const logoutFromPortal = async (scope?: PortalScope): Promise<void> => {
+    const target = scope ?? detectPortalFromPath();
     try {
-      if (getAuthToken()) {
-        await apiRequest('/auth/logout', { method: 'POST' });
+      if (getAuthToken(target)) {
+        await apiRequest('/auth/logout', { method: 'POST', portal: target });
       }
     } catch {
-      // ignore network error on logout
+      // ignore network errors on logout
     } finally {
-      setAuthToken(null);
-      localStorage.removeItem(BACKEND_USER_KEY);
-      setBackendUser(null);
+      setAuthToken(null, target);
+      localStorage.removeItem(USER_KEYS[target]);
+      bump();
+    }
+  };
+
+  const clearMustChangePassword = (scope: PortalScope) => {
+    const user = readStoredUser(scope);
+    if (user) {
+      user.mustChangePassword = false;
+      localStorage.setItem(USER_KEYS[scope], JSON.stringify(user));
+      bump();
     }
   };
 
@@ -83,13 +137,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         currentRole,
-        switchRole,
-        loginWithBackend,
-        logoutBackend,
-        hasBackendSession: Boolean(getAuthToken() && backendUser),
+        getPortalUser,
+        isPortalAuthenticated,
+        loginToPortal,
+        logoutFromPortal,
+        clearMustChangePassword,
         isStudent: currentRole === UserRole.STUDENT,
         isGuide: currentRole === UserRole.GUIDE,
-        isAdmin: currentRole.startsWith('ADMIN'),
+        isAdmin: String(currentRole).startsWith('ADMIN'),
       }}
     >
       {children}

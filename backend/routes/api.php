@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AdminPortalController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CodingChallengeController;
 use App\Http\Controllers\Api\V1\GuidePortalController;
 use App\Http\Controllers\Api\V1\StudentPortalController;
 use Illuminate\Support\Facades\Route;
@@ -14,6 +15,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
+        Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
         // Shared Read Feeds
         Route::get('/companies', [StudentPortalController::class, 'companies']);
@@ -30,6 +32,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/applications', [StudentPortalController::class, 'apply']);
             Route::get('/internships/my-internships', [StudentPortalController::class, 'myInternships']);
             Route::post('/internships/register', [StudentPortalController::class, 'registerInternship']);
+            Route::get('/coding-challenge/profile', [CodingChallengeController::class, 'profile']);
+            Route::post('/coding-challenge/verify-username', [CodingChallengeController::class, 'verifyUsername']);
+            Route::post('/coding-challenge/register-username', [CodingChallengeController::class, 'registerUsername']);
+            Route::post('/coding-challenge/posted-questions/{id}/toggle', [CodingChallengeController::class, 'togglePostedQuestion']);
+            Route::post('/coding-challenge/log-solve', [CodingChallengeController::class, 'logCustomSolve']);
         });
 
         // Guide / Faculty Portal Scope
@@ -39,6 +46,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/internships/{id}/review', [GuidePortalController::class, 'reviewInternship']);
             Route::patch('/documents/{id}/verification', [GuidePortalController::class, 'verifyDocument']);
             Route::post('/guide/notices', [GuidePortalController::class, 'publishNotice']);
+            Route::get('/coding-challenge/questions', [CodingChallengeController::class, 'listQuestions']);
+            Route::post('/coding-challenge/questions', [CodingChallengeController::class, 'storeQuestion']);
+            Route::get('/coding-challenge/leaderboard', [CodingChallengeController::class, 'leaderboard']);
         });
 
         // Admin-Only Master Governance Scope (Strict RBAC)

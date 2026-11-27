@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { AppShell } from './components/layout/AppShell';
+import { RequirePortalAuth } from './components/auth/RequirePortalAuth';
+import { PortalLoginPage } from './features/auth/PortalLoginPage';
 
 // Features
 import { StudentDashboard } from './features/dashboard/StudentDashboard';
@@ -39,8 +41,20 @@ export const App: React.FC = () => {
       <AuthProvider>
         <NotificationProvider>
           <Routes>
-            {/* App Shell Wrapper for Student Portal */}
-            <Route path="/student" element={<AppShell />}>
+            {/* Dedicated Role-Locked Login Screens */}
+            <Route path="/student/login" element={<PortalLoginPage portal="student" />} />
+            <Route path="/guide/login" element={<PortalLoginPage portal="guide" />} />
+            <Route path="/admin/login" element={<PortalLoginPage portal="admin" />} />
+
+            {/* Protected Student Portal */}
+            <Route
+              path="/student"
+              element={
+                <RequirePortalAuth portal="student">
+                  <AppShell />
+                </RequirePortalAuth>
+              }
+            >
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<StudentDashboard />} />
               <Route path="calendar" element={<UnifiedCalendarPage />} />
@@ -102,15 +116,29 @@ export const App: React.FC = () => {
               />
             </Route>
 
-            {/* Guide Portal Routes (Sections 4 of report) */}
-            <Route path="/guide/*" element={<GuidePortal />} />
+            {/* Protected Guide Portal Routes */}
+            <Route
+              path="/guide/*"
+              element={
+                <RequirePortalAuth portal="guide">
+                  <GuidePortal />
+                </RequirePortalAuth>
+              }
+            />
 
-            {/* Admin Portal Routes (Sections 5 of report) */}
-            <Route path="/admin/*" element={<AdminPortal />} />
+            {/* Protected Admin Portal Routes */}
+            <Route
+              path="/admin/*"
+              element={
+                <RequirePortalAuth portal="admin">
+                  <AdminPortal />
+                </RequirePortalAuth>
+              }
+            />
 
             {/* Root & Catch-all Redirects */}
-            <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/student/login" replace />} />
+            <Route path="*" element={<Navigate to="/student/login" replace />} />
           </Routes>
         </NotificationProvider>
       </AuthProvider>
