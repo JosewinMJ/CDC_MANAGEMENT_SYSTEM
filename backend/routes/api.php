@@ -35,6 +35,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/coding-challenge/profile', [CodingChallengeController::class, 'profile']);
             Route::post('/coding-challenge/verify-username', [CodingChallengeController::class, 'verifyUsername']);
             Route::post('/coding-challenge/register-username', [CodingChallengeController::class, 'registerUsername']);
+            Route::post('/coding-challenge/sync-leetcode', [CodingChallengeController::class, 'syncFromLeetCode']);
             Route::post('/coding-challenge/posted-questions/{id}/toggle', [CodingChallengeController::class, 'togglePostedQuestion']);
             Route::post('/coding-challenge/log-solve', [CodingChallengeController::class, 'logCustomSolve']);
         });

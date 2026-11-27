@@ -7,8 +7,10 @@ use App\Models\CodingQuestion;
 use App\Models\StudentCodingSolve;
 use App\Models\StudentProfile;
 use App\Services\AuditService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class CodingChallengeController extends Controller
@@ -23,8 +25,14 @@ class CodingChallengeController extends Controller
 
     public function profile(Request $request): JsonResponse
     {
-        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
-        return response()->json($this->buildCodingProfilePayload($profile));
+        $profile = StudentProfile::with('user:id,name,department')
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $payload = $this->buildCodingProfilePayload($profile);
+        $payload['leetcodeDaily'] = $this->fetchLeetCodeDailyChallenge();
+
+        return response()->json($payload);
     }
 
     public function verifyUsername(Request $request): JsonResponse
@@ -50,12 +58,14 @@ class CodingChallengeController extends Controller
             ]);
         }
 
-        // Attempt live LeetCode GraphQL lookup (graceful fallback if college network blocks outbound)
         try {
-            $resp = Http::timeout(4)->post('https://leetcode.com/graphql', [
-                'query' => 'query getUserProfile($username: String!) { matchedUser(username: $username) { username submitStats { acSubmissionNum { difficulty count } } } }',
-                'variables' => ['username' => $cleaned],
-            ]);
+            $resp = Http::timeout(6)
+                ->withHeaders(['Referer' => 'https://leetcode.com'])
+                ->post('https://leetcode.com/graphql', [
+                    'query' => 'query getUserProfile($username: String!) { matchedUser(username: $username) { username submitStats { acSubmissionNum { difficulty count } } } }',
+                    'variables' => ['username' => $cleaned],
+                ]);
+
             if ($resp->ok()) {
                 $matched = $resp->json('data.matchedUser');
                 if ($matched === null) {
@@ -77,11 +87,11 @@ class CodingChallengeController extends Controller
                     'medium' => $medium,
                     'hard' => $hard,
                     'total' => $total,
-                    'message' => "LeetCode verified live — Easy {$easy} · Medium {$medium} · Hard {$hard}",
+                    'message' => "LeetCode verified live — Easy {$easy} · Medium {$medium} · Hard {$hard} (Total {$total})",
                 ]);
             }
         } catch (\Throwable) {
-            // Network-offline fallback
+            // Graceful fallback when outbound internet is blocked
         }
 
         $existingStats = StudentProfile::where('user_id', $user->id)->value('coding_stats') ?? [];
@@ -104,8 +114,13 @@ class CodingChallengeController extends Controller
             return response()->json(['message' => 'Invalid LeetCode handle.'], 422);
         }
 
-        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
-        $dup = StudentProfile::where('leetcode_username', $cleaned)->where('id', '!=', $profile->id)->exists();
+        $profile = StudentProfile::with('user:id,name,department')
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $dup = StudentProfile::where('leetcode_username', $cleaned)
+            ->where('id', '!=', $profile->id)
+            ->exists();
         if ($dup) {
             return response()->json(['message' => 'This LeetCode username is already linked to another student.'], 422);
         }
@@ -117,8 +132,36 @@ class CodingChallengeController extends Controller
             'coding_stats' => $stats,
         ]);
 
-        AuditService::log('LEETCODE_REGISTERED', 'StudentProfile', (string)$profile->id, "Linked @{$cleaned}", null, $request);
-        return response()->json($this->buildCodingProfilePayload($profile->fresh()));
+        // Immediately attempt live sync from LeetCode so stats populate right away
+        $syncedNew = $this->pullLiveLeetCodeSubmissions($profile->fresh());
+
+        AuditService::log('LEETCODE_REGISTERED', 'StudentProfile', (string)$profile->id, "Linked @{$cleaned} (synced {$syncedNew} recent solves)", null, $request);
+
+        $payload = $this->buildCodingProfilePayload($profile->fresh('user:id,name,department'));
+        $payload['syncedNewCount'] = $syncedNew;
+        $payload['leetcodeDaily'] = $this->fetchLeetCodeDailyChallenge();
+
+        return response()->json($payload);
+    }
+
+    public function syncFromLeetCode(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::with('user:id,name,department')
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        if (!$profile->leetcode_username) {
+            return response()->json(['message' => 'Please link your LeetCode username first.'], 422);
+        }
+
+        $syncedNew = $this->pullLiveLeetCodeSubmissions($profile);
+        AuditService::log('LEETCODE_SYNCED', 'StudentProfile', (string)$profile->id, "Synced @{$profile->leetcode_username} (+{$syncedNew} new solves)", null, $request);
+
+        $payload = $this->buildCodingProfilePayload($profile->fresh('user:id,name,department'));
+        $payload['syncedNewCount'] = $syncedNew;
+        $payload['leetcodeDaily'] = $this->fetchLeetCodeDailyChallenge();
+
+        return response()->json($payload);
     }
 
     public function togglePostedQuestion(Request $request, int $id): JsonResponse
@@ -177,7 +220,7 @@ class CodingChallengeController extends Controller
             'topics' => ['array'],
         ]);
 
-        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $profile = StudentProfile::with('user:id,name,department')->where('user_id', $request->user()->id)->firstOrFail();
         StudentCodingSolve::create([
             'student_profile_id' => $profile->id,
             'title' => $data['title'],
@@ -190,7 +233,10 @@ class CodingChallengeController extends Controller
         $this->syncCachedStats($profile);
         AuditService::log('CUSTOM_CODING_SOLVE', 'StudentProfile', (string)$profile->id, "Logged {$data['title']}", null, $request);
 
-        return response()->json($this->buildCodingProfilePayload($profile->fresh()), 201);
+        $payload = $this->buildCodingProfilePayload($profile->fresh('user:id,name,department'));
+        $payload['leetcodeDaily'] = $this->fetchLeetCodeDailyChallenge();
+
+        return response()->json($payload, 201);
     }
 
     public function listQuestions(): JsonResponse
@@ -256,6 +302,114 @@ class CodingChallengeController extends Controller
         return response()->json($students);
     }
 
+    private function pullLiveLeetCodeSubmissions(StudentProfile $profile): int
+    {
+        $username = $profile->leetcode_username;
+        if (!$username) {
+            return 0;
+        }
+
+        $syncedNew = 0;
+        try {
+            $resp = Http::timeout(6)
+                ->withHeaders(['Referer' => 'https://leetcode.com'])
+                ->post('https://leetcode.com/graphql', [
+                    'query' => 'query syncUser($u: String!) { matchedUser(username: $u) { submitStats { acSubmissionNum { difficulty count } } } recentAcSubmissionList(username: $u, limit: 15) { id title titleSlug timestamp } }',
+                    'variables' => ['u' => $username],
+                ]);
+
+            if (!$resp->ok() || !$resp->json('data.matchedUser')) {
+                return 0;
+            }
+
+            $stats = collect($resp->json('data.matchedUser.submitStats.acSubmissionNum') ?? [])->keyBy('difficulty');
+            $recent = $resp->json('data.recentAcSubmissionList') ?? [];
+            $existingTitles = StudentCodingSolve::where('student_profile_id', $profile->id)
+                ->pluck('title')
+                ->map(fn ($t) => strtolower($t))
+                ->all();
+
+            foreach ($recent as $item) {
+                $title = trim((string)($item['title'] ?? ''));
+                $slug = trim((string)($item['titleSlug'] ?? ''));
+                if ($title === '' || in_array(strtolower($title), $existingTitles, true)) {
+                    continue;
+                }
+
+                // Match against any CDC posted question by URL slug if applicable
+                $matchedQ = $slug !== ''
+                    ? CodingQuestion::where('leetcode_url', 'like', "%/{$slug}%")->first()
+                    : null;
+
+                $ts = isset($item['timestamp']) ? Carbon::createFromTimestamp((int)$item['timestamp']) : now();
+                StudentCodingSolve::create([
+                    'student_profile_id' => $profile->id,
+                    'coding_question_id' => $matchedQ?->id,
+                    'title' => $title,
+                    'leetcode_url' => $slug !== '' ? "https://leetcode.com/problems/{$slug}/" : 'https://leetcode.com/problemset/',
+                    'difficulty' => $matchedQ?->difficulty ?? 'Medium',
+                    'topics' => $matchedQ?->topics ?? ['Arrays'],
+                    'solved_at' => $ts,
+                ]);
+                $existingTitles[] = strtolower($title);
+                $syncedNew++;
+            }
+
+            $easy = (int)($stats->get('Easy')['count'] ?? 0);
+            $medium = (int)($stats->get('Medium')['count'] ?? 0);
+            $hard = (int)($stats->get('Hard')['count'] ?? 0);
+
+            $profile->update([
+                'coding_stats' => array_merge($profile->coding_stats ?? [], [
+                    'leetcodeTotal' => $easy + $medium + $hard,
+                    'leetcodeEasy' => $easy,
+                    'leetcodeMedium' => $medium,
+                    'leetcodeHard' => $hard,
+                    'trackingStatus' => 'OK',
+                    'lastLiveSyncAt' => now()->toIso8601String(),
+                ]),
+            ]);
+        } catch (\Throwable) {
+            // Leave existing local DB stats intact if network is temporarily unavailable
+        }
+
+        return $syncedNew;
+    }
+
+    private function fetchLeetCodeDailyChallenge(): ?array
+    {
+        return Cache::remember('leetcode_daily_q', 1800, function () {
+            try {
+                $resp = Http::timeout(4)
+                    ->withHeaders(['Referer' => 'https://leetcode.com'])
+                    ->post('https://leetcode.com/graphql', [
+                        'query' => 'query { activeDailyCodingChallengeQuestion { date link question { title difficulty frontendQuestionId: questionFrontendId topicTags { name } } } }',
+                    ]);
+                if ($resp->ok()) {
+                    $q = $resp->json('data.activeDailyCodingChallengeQuestion');
+                    if ($q && isset($q['question'])) {
+                        return [
+                            'date' => $q['date'],
+                            'title' => ($q['question']['frontendQuestionId'] ?? '') . '. ' . ($q['question']['title'] ?? 'Daily Problem'),
+                            'difficulty' => $q['question']['difficulty'] ?? 'Medium',
+                            'url' => 'https://leetcode.com' . ($q['link'] ?? '/problemset/'),
+                            'topics' => collect($q['question']['topicTags'] ?? [])->pluck('name')->take(3)->values()->all(),
+                        ];
+                    }
+                }
+            } catch (\Throwable) {
+                // ignore offline failure
+            }
+            return [
+                'date' => now()->toDateString(),
+                'title' => '1. Two Sum',
+                'difficulty' => 'Easy',
+                'url' => 'https://leetcode.com/problems/two-sum/',
+                'topics' => ['Array', 'Hash Table'],
+            ];
+        });
+    }
+
     private function cleanLeetCodeHandle(string $input): string
     {
         $clean = trim($input);
@@ -312,7 +466,7 @@ class CodingChallengeController extends Controller
         $total = $solves->count();
         $solvedThisWeek = $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek())->count();
 
-        $topicStats = collect(self::CURRICULUM_TOPICS)->map(function ($topic) use ($solves) {
+        $topicCounts = collect(self::CURRICULUM_TOPICS)->map(function ($topic) use ($solves) {
             $matching = $solves->filter(fn ($s) => in_array($topic, $s->topics ?? [], true));
             return [
                 'topicName' => $topic,
@@ -320,9 +474,13 @@ class CodingChallengeController extends Controller
                 'medium' => $matching->where('difficulty', 'Medium')->count(),
                 'hard' => $matching->where('difficulty', 'Hard')->count(),
                 'total' => $matching->count(),
-                'target' => 10,
+                'targetCount' => 10,
             ];
-        })->values();
+        });
+        $maxTopicTotal = max(1, (int)$topicCounts->max('total'));
+        $topicStats = $topicCounts->map(fn ($t) => array_merge($t, [
+            'isStrong' => $t['total'] > 0 && $t['total'] === $maxTopicTotal,
+        ]))->values();
 
         $trend = collect(range(6, 0))->map(function ($daysAgo) use ($solves) {
             $date = now()->subDays($daysAgo)->toDateString();
@@ -330,14 +488,32 @@ class CodingChallengeController extends Controller
             return ['date' => now()->subDays($daysAgo)->format('M d'), 'count' => $cum];
         })->values();
 
+        $activityMap = collect(range(13, 0))->map(function ($daysAgo) use ($solves) {
+            $date = now()->subDays($daysAgo)->toDateString();
+            return [
+                'date' => $date,
+                'solves' => $solves->filter(fn ($s) => $s->solved_at->toDateString() === $date)->count(),
+            ];
+        })->values();
+
+        $weekEasy = $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Easy')->count();
+        $weekMedium = $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Medium')->count();
+        $weekHard = $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Hard')->count();
+        $targetMet = $solvedThisWeek >= 10;
+
         return [
             'username' => $profile->leetcode_username ?? '',
+            'fullName' => $profile->user?->name ?? 'Student',
+            'regNumber' => $profile->reg_number,
+            'classSection' => $profile->branch . ' · Batch ' . $profile->graduation_year,
             'trackingStatus' => $profile->leetcode_username ? 'OK' : 'NO_USERNAME_GIVEN',
-            'lastUpdated' => now()->toIso8601String(),
+            'programStartDate' => now()->startOfMonth()->toDateString(),
+            'lastUpdated' => $profile->coding_stats['lastLiveSyncAt'] ?? now()->toIso8601String(),
             'totalSolved' => $total,
             'easySolved' => $easy,
             'mediumSolved' => $medium,
             'hardSolved' => $hard,
+            'leetcodeTotal' => (int)($profile->coding_stats['leetcodeTotal'] ?? $total),
             'solvedThisWeek' => $solvedThisWeek,
             'weeklyTarget' => 10,
             'streakDays' => $solvedThisWeek > 0 ? min(7, $solvedThisWeek) : 0,
@@ -356,20 +532,20 @@ class CodingChallengeController extends Controller
             'postedQuestions' => $postedQuestions,
             'weeklyReports' => [
                 [
-                    'weekLabel' => 'Current Week (' . now()->startOfWeek()->format('M d') . ' - ' . now()->endOfWeek()->format('M d') . ')',
-                    'startDate' => now()->startOfWeek()->toDateString(),
-                    'endDate' => now()->endOfWeek()->toDateString(),
-                    'totalBefore' => max(0, $total - $solvedThisWeek),
-                    'totalAfter' => $total,
-                    'deltaSolved' => $solvedThisWeek,
-                    'easyDelta' => $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Easy')->count(),
-                    'mediumDelta' => $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Medium')->count(),
-                    'hardDelta' => $solves->filter(fn ($s) => $s->solved_at >= now()->startOfWeek() && $s->difficulty === 'Hard')->count(),
-                    'target' => 10,
-                    'targetMet' => $solvedThisWeek >= 10,
+                    'weekNumber' => (int)now()->weekOfYear,
+                    'weekEndingDate' => now()->endOfWeek()->format('M d, Y'),
+                    'easy' => $weekEasy,
+                    'medium' => $weekMedium,
+                    'hard' => $weekHard,
+                    'solvedThisWeek' => $solvedThisWeek,
+                    'totalSinceStart' => $total,
+                    'postedQuestionsDone' => $postedQuestions->where('isSolved', true)->count(),
+                    'targetMet' => $targetMet,
+                    'flag' => $targetMet ? 'Target met' : 'Below target (10)',
                 ],
             ],
             'dailySolveTrend' => $trend,
+            'activityMap' => $activityMap,
         ];
     }
 }

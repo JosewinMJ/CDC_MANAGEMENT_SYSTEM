@@ -6,9 +6,23 @@ import {
   ProblemDifficulty,
 } from '../shared/types';
 
+export interface LeetCodeDailyQuestion {
+  date: string;
+  title: string;
+  difficulty: string;
+  url: string;
+  topics: string[];
+}
+
+export interface LiveCodingProfileResponse extends CodingProfile {
+  leetcodeDaily?: LeetCodeDailyQuestion;
+  leetcodeTotal?: number;
+  syncedNewCount?: number;
+}
+
 export const codingChallengeService = {
-  async getCodingProfile(): Promise<CodingProfile> {
-    return apiRequest<CodingProfile>('/coding-challenge/profile', { portal: 'student' });
+  async getCodingProfile(): Promise<LiveCodingProfileResponse> {
+    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/profile', { portal: 'student' });
   },
 
   async verifyLeetCodeUsername(input: string): Promise<{
@@ -26,11 +40,18 @@ export const codingChallengeService = {
     });
   },
 
-  async registerLeetCode(username: string): Promise<CodingProfile> {
-    return apiRequest<CodingProfile>('/coding-challenge/register-username', {
+  async registerLeetCode(username: string): Promise<LiveCodingProfileResponse> {
+    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/register-username', {
       method: 'POST',
       portal: 'student',
       body: JSON.stringify({ username }),
+    });
+  },
+
+  async syncFromLeetCode(): Promise<LiveCodingProfileResponse> {
+    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/sync-leetcode', {
+      method: 'POST',
+      portal: 'student',
     });
   },
 
@@ -46,20 +67,11 @@ export const codingChallengeService = {
     leetcodeUrl?: string;
     difficulty: ProblemDifficulty;
     topics?: string[];
-  }): Promise<CodingProfile> {
-    return apiRequest<CodingProfile>('/coding-challenge/log-solve', {
+  }): Promise<LiveCodingProfileResponse> {
+    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/log-solve', {
       method: 'POST',
       portal: 'student',
       body: JSON.stringify(payload),
-    });
-  },
-
-  async addMockSolve(): Promise<CodingProfile> {
-    return this.logCustomSolve({
-      title: '704. Binary Search',
-      leetcodeUrl: 'https://leetcode.com/problems/binary-search',
-      difficulty: ProblemDifficulty.EASY,
-      topics: ['Arrays', 'Sorting & Searching'],
     });
   },
 };
