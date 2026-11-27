@@ -10,7 +10,7 @@ import {
   AlertCircle,
   FileCheck,
 } from 'lucide-react';
-import { db } from '../../services/storage';
+import { DocumentDownload } from '../../components/common/DocumentDownload';
 import { documentService } from '../../services/documentService';
 import { Document, DocumentVerificationStatus } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -23,7 +23,9 @@ export const DocumentsTab: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [category, setCategory] = useState<Document['category']>('Resume');
-  const [selectedFileName, setSelectedFileName] = useState('');
+  const [file, setFile] = useState<File>();
+  const [busy, setBusy] = useState(false);
+  const report = (err: unknown) => showToast({type: 'error', title: 'Document request failed', message: err instanceof Error ? err.message : 'Try again.'});
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   const { showToast } = useNotification();
@@ -34,34 +36,35 @@ export const DocumentsTab: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDocuments();
+    loadDocuments().catch(report);
   }, []);
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFileName) {
+    if (!file || busy) {
       showToast({ type: 'error', title: 'File Missing', message: 'Please select a file to upload.' });
       return;
     }
 
-    await documentService.uploadDocument({
-      name: selectedFileName,
-      category,
-      fileUrl: `/uploads/${selectedFileName}`,
-      fileSize: '1.5 MB',
-    });
-
-    await loadDocuments();
-    setIsUploadModalOpen(false);
-    setSelectedFileName('');
-    showToast({ type: 'success', title: 'Document Uploaded', message: `${category} is pending verification.` });
+    setBusy(true);
+    try {
+      await documentService.uploadDocument(file, category);
+      setFile(undefined);
+      setIsUploadModalOpen(false);
+      await loadDocuments();
+      showToast({ type: 'success', title: 'Document uploaded', message: 'Submitted for guide verification.' });
+    } catch (error) { report(error); }
+    finally { setBusy(false); }
   };
 
   const handleDelete = async (docId: string, name: string) => {
-    if (window.confirm(`Delete ${name}?`)) {
+    if (!window.confirm(`Delete ${name}?`)) return;
+    try {
       await documentService.deleteDocument(docId);
       await loadDocuments();
       showToast({ type: 'info', title: 'Document Removed', message: `${name} has been deleted.` });
+    } catch (error) {
+      report(error);
     }
   };
 
@@ -141,21 +144,10 @@ export const DocumentsTab: React.FC = () => {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      <a
-                        href={doc.fileUrl}
-                        download={doc.name}
-                        onClick={e => {
-                          e.preventDefault();
-                          showToast({ type: 'info', title: 'Download Triggered', message: `Downloading ${doc.name}` });
-                        }}
-                        className="p-1.5 text-slate-600 hover:text-[#2855A6] hover:bg-slate-100 rounded-lg transition"
-                        title="Download Document"
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
+                      <DocumentDownload path={doc.fileUrl} name={doc.name} portal="student" />
 
                       <button
-                        onClick={() => handleDelete(doc.id, doc.name)}
+                        disabled={Boolean(doc.internshipId)} onClick={() => handleDelete(doc.id, doc.name).catch(report)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                         title="Delete Document"
                       >
@@ -201,8 +193,8 @@ export const DocumentsTab: React.FC = () => {
           <FileUploader
             label="Select Document File:"
             helperText="PDF or DOCX up to 5MB"
-            onFileSelect={setSelectedFileName}
-            selectedFileName={selectedFileName}
+            onFileSelect={(_, selected) => setFile(selected)}
+            selectedFileName={file?.name}
           />
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -214,7 +206,7 @@ export const DocumentsTab: React.FC = () => {
               Cancel
             </button>
             <button
-              type="submit"
+              type="submit" disabled={busy}
               className="px-5 py-2 text-xs font-bold bg-[#2855A6] hover:bg-[#142B4A] text-white rounded-xl shadow-xs transition"
             >
               Upload Document

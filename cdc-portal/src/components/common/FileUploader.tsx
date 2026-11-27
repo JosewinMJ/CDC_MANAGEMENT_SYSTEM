@@ -6,7 +6,7 @@ interface FileUploaderProps {
   helperText?: string;
   accept?: string;
   maxSizeMb?: number;
-  onFileSelect: (fileName: string) => void;
+  onFileSelect: (fileName: string, file?: File) => void;
   selectedFileName?: string;
   disabled?: boolean;
 }
@@ -55,7 +55,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       setError(`File size exceeds maximum allowed size of ${maxSizeMb}MB`);
       return;
     }
-    onFileSelect(file.name);
+    onFileSelect(file.name, file);
   };
 
   return (

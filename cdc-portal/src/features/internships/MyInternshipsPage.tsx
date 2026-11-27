@@ -1,3 +1,5 @@
+import { apiRequest } from '../../services/apiClient';
+import { DocumentDownload } from '../../components/common/DocumentDownload';
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
@@ -64,6 +66,24 @@ export const MyInternshipsPage: React.FC = () => {
     const unsub = subscribeToStore('cdc_internships', loadData);
     return () => unsub();
   }, [searchParams]);
+
+  const [resubmitting, setResubmitting] = useState(false);
+  async function resubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedInternship || resubmitting) return;
+    const body = new FormData(event.currentTarget);
+    if (!(body.get('supporting') as File)?.size) body.delete('supporting');
+    setResubmitting(true);
+    try {
+      await apiRequest('/internships/' + selectedInternship.id + '/resubmit', { portal: 'student', method: 'POST', body });
+      const list = await internshipService.getInternships();
+      setInternships(list);
+      setSelectedInternship(list.find(item => item.id === selectedInternship.id) ?? null);
+      showToast({type: 'success', title: 'Resubmitted', message: 'Your guide can now review the revision.'});
+    } catch (err) {
+      showToast({type: 'error', title: 'Resubmission failed', message: err instanceof Error ? err.message : 'Try again.'});
+    } finally { setResubmitting(false); }
+  }
 
   const handleCompletionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,7 +204,7 @@ export const MyInternshipsPage: React.FC = () => {
                   </p>
                 </div>
 
-                {selectedInternship.status !== InternshipStatus.COMPLETED && (
+                {[InternshipStatus.APPROVED, InternshipStatus.IN_PROGRESS].includes(selectedInternship.status) && (
                   <button
                     onClick={() => setIsCompletionModalOpen(true)}
                     className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition self-start sm:self-auto"
@@ -211,6 +231,17 @@ export const MyInternshipsPage: React.FC = () => {
                   Multi-Stage Verification Workflow (Student → Guide → Coordinator → Final Approval)
                 </h4>
                 <StepperTimeline steps={selectedInternship.steps} />
+                {selectedInternship.status === InternshipStatus.CHANGES_REQUESTED && (
+                  <form key={selectedInternship.id} onSubmit={resubmit} className="mt-4 grid gap-3 text-sm">
+                    <label>Updated work profile or response to guide
+                      <textarea required maxLength={10000} name="workProfile" defaultValue={selectedInternship.workProfile} className="block w-full rounded border p-2" />
+                    </label>
+                    <label>Revised supporting document (optional)
+                      <input type="file" name="supporting" accept=".pdf,.doc,.docx" className="block" />
+                    </label>
+                    <button disabled={resubmitting} className="rounded bg-[#2855A6] p-2 font-semibold text-white">Resubmit for guide review</button>
+                  </form>
+                )}
               </div>
             </div>
           </div>
@@ -236,7 +267,7 @@ export const MyInternshipsPage: React.FC = () => {
                       <h5 className="text-xs font-bold text-[#142B4A] truncate">{doc.name}</h5>
                       <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px] text-slate-500">
                         <span>Uploaded: {formatDate(doc.uploadDate)}</span>
-                        <span className="font-semibold text-[#2855A6]">Verified</span>
+                        <DocumentDownload path={doc.fileUrl} name={doc.name} portal="student" />
                       </div>
                     </div>
                   ))

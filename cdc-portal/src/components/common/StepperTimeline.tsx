@@ -59,7 +59,7 @@ export const StepperTimeline: React.FC<StepperTimelineProps> = ({ steps, classNa
                       : 'bg-amber-100 text-amber-800'
                   }`}
                 >
-                  {step.decision}
+                  {step.reviewOutcome === 'CHANGES_REQUESTED' ? 'Changes requested' : step.decision}
                 </span>
               </div>
 

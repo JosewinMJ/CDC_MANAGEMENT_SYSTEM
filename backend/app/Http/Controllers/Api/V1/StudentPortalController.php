@@ -13,6 +13,8 @@ use App\Models\StudentProfile;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class StudentPortalController extends Controller
 {
@@ -201,6 +203,9 @@ class StudentPortalController extends Controller
     public function registerInternship(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'offer' => ['sometimes', ...StudentDocumentController::FILE_RULES],
+            'joining' => ['sometimes', ...StudentDocumentController::FILE_RULES],
+            'supporting' => ['sometimes', ...StudentDocumentController::FILE_RULES],
             'track' => ['required', 'in:TRACK_1_SUMMER,TRACK_2_HYBRID,TRACK_3_SEMESTER'],
             'semester' => ['nullable', 'string', 'max:40'],
             'companyName' => ['required', 'string', 'max:160'],
@@ -217,34 +222,86 @@ class StudentPortalController extends Controller
         ]);
 
         $profile = StudentProfile::with(['user', 'assignedGuide'])->where('user_id', $request->user()->id)->firstOrFail();
-        $internship = Internship::create([
-            'student_profile_id' => $profile->id,
-            'track' => $data['track'],
-            'semester' => $data['semester'] ?? null,
-            'company_name' => $data['companyName'],
-            'company_contact_number' => $data['companyContactNumber'] ?? null,
-            'company_address' => $data['companyAddress'] ?? null,
-            'job_role' => $data['jobRole'],
-            'is_stipend' => $data['isStipend'] ?? false,
-            'stipend_amount' => $data['stipendAmount'] ?? null,
-            'mode' => $data['mode'] ?? 'Hybrid',
-            'start_date' => $data['startDate'],
-            'end_date' => $data['endDate'],
-            'duration_weeks' => $data['durationWeeks'],
-            'work_profile' => $data['workProfile'] ?? '',
-            'faculty_guide_id' => $profile->assigned_guide_id,
-            'status' => 'PENDING_GUIDE_REVIEW',
-            'academic_year' => $profile->academic_year,
-            'steps' => [
-                ['stepNumber' => 1, 'stepName' => 'Student Submission', 'assignedRole' => 'STUDENT', 'decision' => 'SUBMITTED', 'responsibleUserName' => $profile->user->name, 'decisionDate' => now()->toIso8601String()],
-                ['stepNumber' => 2, 'stepName' => 'Faculty Guide Review', 'assignedRole' => 'GUIDE', 'decision' => 'PENDING', 'responsibleUserName' => $profile->assignedGuide?->name ?? 'Faculty Guide'],
-                ['stepNumber' => 3, 'stepName' => 'CDC Coordinator Verification', 'assignedRole' => 'ADMIN_INTERNSHIP', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Internship Coordinator'],
-                ['stepNumber' => 4, 'stepName' => 'Final Approval', 'assignedRole' => 'ADMIN_SUPER', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Administration'],
-            ],
-        ]);
+        $paths = [];
+        try {
+            return DB::transaction(function () use ($profile, $data, $request, &$paths) {
+                $internship = Internship::create([
+                    'student_profile_id' => $profile->id,
+                    'track' => $data['track'],
+                    'semester' => $data['semester'] ?? null,
+                    'company_name' => $data['companyName'],
+                    'company_contact_number' => $data['companyContactNumber'] ?? null,
+                    'company_address' => $data['companyAddress'] ?? null,
+                    'job_role' => $data['jobRole'],
+                    'is_stipend' => $data['isStipend'] ?? false,
+                    'stipend_amount' => $data['stipendAmount'] ?? null,
+                    'mode' => $data['mode'] ?? 'Hybrid',
+                    'start_date' => $data['startDate'],
+                    'end_date' => $data['endDate'],
+                    'duration_weeks' => $data['durationWeeks'],
+                    'work_profile' => $data['workProfile'] ?? '',
+                    'faculty_guide_id' => $profile->assigned_guide_id,
+                    'status' => 'PENDING_GUIDE_REVIEW',
+                    'academic_year' => $profile->academic_year,
+                    'steps' => [
+                        ['stepNumber' => 1, 'stepName' => 'Student Submission', 'assignedRole' => 'STUDENT', 'decision' => 'SUBMITTED', 'responsibleUserName' => $profile->user->name, 'decisionDate' => now()->toIso8601String()],
+                        ['stepNumber' => 2, 'stepName' => 'Faculty Guide Review', 'assignedRole' => 'GUIDE', 'decision' => 'PENDING', 'responsibleUserName' => $profile->assignedGuide?->name ?? 'Faculty Guide'],
+                        ['stepNumber' => 3, 'stepName' => 'CDC Coordinator Verification', 'assignedRole' => 'ADMIN_INTERNSHIP', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Internship Coordinator'],
+                        ['stepNumber' => 4, 'stepName' => 'Final Approval', 'assignedRole' => 'ADMIN_SUPER', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Administration'],
+                    ],
+                ]);
 
-        AuditService::log('REGISTERED_INTERNSHIP', 'Internship', (string)$internship->id, "Registered {$data['track']} at {$data['companyName']}", null, $request);
-        return response()->json($internship, 201);
+                $this->attachEvidence($internship, $profile, $request, $paths);
+                AuditService::log('REGISTERED_INTERNSHIP', 'Internship', (string)$internship->id, "Registered {$data['track']} at {$data['companyName']}", null, $request);
+                return response()->json($internship, 201);
+            });
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($paths);
+            throw $error;
+        }
+    }
+
+    private function attachEvidence(Internship $internship, StudentProfile $profile, Request $request, array &$paths): void
+    {
+        $documents = $internship->documents ?? [];
+        foreach (['offer' => 'Offer Letter', 'joining' => 'Joining Letter', 'supporting' => 'Other'] as $field => $category) {
+            if (!$request->hasFile($field)) continue;
+            $doc = StudentDocumentController::saveUpload($profile, $request->file($field), $category, $paths, $internship);
+            $documents[] = [
+                'id' => (string) $doc->id, 'name' => $doc->name, 'category' => $category,
+                'fileUrl' => $doc->file_url, 'fileSize' => $doc->file_size, 'uploadDate' => now()->toDateString(),
+                'verificationStatus' => $doc->verification_status,
+            ];
+        }
+        $internship->update(['documents' => $documents]);
+    }
+
+    public function resubmit(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'workProfile' => 'required|string|max:10000',
+            'supporting' => ['sometimes', ...StudentDocumentController::FILE_RULES],
+        ]);
+        $profile = $request->user()->studentProfile()->firstOrFail();
+        $paths = [];
+        try {
+            return DB::transaction(function () use ($id, $profile, $data, $request, &$paths) {
+                $internship = $profile->internships()->lockForUpdate()->findOrFail($id);
+                $steps = $internship->steps ?? [];
+                $index = array_search(2, array_column($steps, 'stepNumber'));
+                abort_unless($internship->status === 'REJECTED' && $index !== false
+                    && ($steps[$index]['reviewOutcome'] ?? null) === 'CHANGES_REQUESTED', 409, 'This submission is not awaiting changes.');
+                unset($steps[$index]['reviewOutcome'], $steps[$index]['decisionDate'], $steps[$index]['remarks']);
+                $steps[$index]['decision'] = 'PENDING';
+                $internship->update(['steps' => $steps, 'work_profile' => $data['workProfile'], 'status' => 'PENDING_GUIDE_REVIEW']);
+                $this->attachEvidence($internship, $profile, $request, $paths);
+                AuditService::log('INTERNSHIP_RESUBMITTED', 'Internship', (string) $id, 'Returned to guide review', null, $request);
+                return response()->json($internship->fresh());
+            });
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($paths);
+            throw $error;
+        }
     }
 
     public function notices(Request $request): JsonResponse

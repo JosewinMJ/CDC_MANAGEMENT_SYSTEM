@@ -36,6 +36,10 @@ npm run dev
 ```
 Or double-click **`run_industrial.bat`** on Windows to launch both servers together!
 
+### Updating an existing installation
+
+Run `php artisan migrate` from `backend/` before serving the updated portal. Internship evidence and student document uploads are stored on Laravel's private `local` disk, so keep `backend/storage/app/private` writable and persistent. To support three 5 MB internship attachments in one submission, configure PHP with `upload_max_filesize` of at least `5M` and `post_max_size` of at least `16M`.
+
 ---
 
 ## Seeded Portal Accounts

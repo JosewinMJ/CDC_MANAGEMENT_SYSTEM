@@ -1,54 +1,30 @@
+import { apiRequest } from './apiClient';
 import { db } from './storage';
 import { Document, DocumentVerificationStatus, UserRole } from '../shared/types';
 
 export const documentService = {
   async getDocuments(): Promise<Document[]> {
-    const student = db.getStudent();
-    return Promise.resolve(student.documents);
+    const rows = await apiRequest<Array<{
+      id: number; name: string; category: Document['category']; file_url: string; file_size: string;
+      created_at: string; verification_status: DocumentVerificationStatus; verified_by?: string; verified_date?: string; rejection_reason?: string;
+      internship_id?: number;
+    }>>('/students/me/documents', { portal: 'student' });
+    return rows.map(row => ({
+      id: String(row.id), name: row.name, category: row.category, fileUrl: row.file_url,
+      fileSize: row.file_size, uploadDate: row.created_at, verificationStatus: row.verification_status,
+      verifiedBy: row.verified_by, verifiedDate: row.verified_date, rejectionReason: row.rejection_reason, internshipId: row.internship_id,
+    }));
   },
 
-  async uploadDocument(doc: Omit<Document, 'id' | 'uploadDate' | 'verificationStatus'>): Promise<Document> {
-    const student = db.getStudent();
-    const newDoc: Document = {
-      ...doc,
-      id: `doc-${Date.now()}`,
-      uploadDate: new Date().toISOString(),
-      verificationStatus: DocumentVerificationStatus.PENDING_VERIFICATION,
-    };
-
-    const updatedDocs = [newDoc, ...student.documents.filter(d => d.category !== doc.category || doc.category === 'Certificate' || doc.category === 'Other')];
-    db.setStudent({
-      ...student,
-      documents: updatedDocs,
-    });
-
-    // Audit log
-    const auditLogs = db.getAuditLog();
-    auditLogs.unshift({
-      id: `audit-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      actorUserId: student.id,
-      actorName: student.fullName,
-      actorRole: UserRole.STUDENT,
-      action: 'UPLOADED_DOCUMENT',
-      entityType: 'Document',
-      entityId: newDoc.id,
-      details: `Uploaded ${newDoc.category}: ${newDoc.name}`,
-      academicYear: student.academicYear,
-    });
-    db.setAuditLog(auditLogs);
-
-    return Promise.resolve(newDoc);
+  async uploadDocument(file: File, category: string) {
+    const body = new FormData();
+    body.set('file', file);
+    body.set('category', category);
+    return apiRequest('/students/me/documents', { portal: 'student', method: 'POST', body });
   },
 
-  async deleteDocument(docId: string): Promise<boolean> {
-    const student = db.getStudent();
-    const filtered = student.documents.filter(d => d.id !== docId);
-    db.setStudent({
-      ...student,
-      documents: filtered,
-    });
-    return Promise.resolve(true);
+  async deleteDocument(id: string) {
+    return apiRequest('/students/me/documents/' + id, { portal: 'student', method: 'DELETE' });
   },
 
   // Mock function for Guide/Admin simulator
