@@ -1,5 +1,6 @@
 import { apiRequest } from './apiClient';
-import { Internship, InternshipStatus, InternshipTrack, UserRole } from '../shared/types';
+import { notifyStore } from './storeEvents';
+import { Internship, InternshipStatus, InternshipTrack } from '../shared/types';
 
 function mapInternship(it: any): Internship {
   return {
@@ -77,23 +78,9 @@ export const internshipService = {
       if (file) body.set(key, file);
     }
     const raw = await apiRequest('/internships/register', { method: 'POST', portal: 'student', body });
-    return mapInternship(raw);
-  },
-
-  async reviewInternshipMock(
-    internshipId: string,
-    role: UserRole.GUIDE | UserRole.ADMIN_INTERNSHIP,
-    decision: 'APPROVED' | 'REJECTED',
-    remarks?: string,
-    _reviewerName?: string
-  ): Promise<Internship | null> {
-    const portal = role === UserRole.GUIDE ? 'guide' : 'admin';
-    const raw = await apiRequest<any>(`/internships/${internshipId}/review`, {
-      method: 'POST',
-      portal,
-      body: JSON.stringify({ role, decision, remarks }),
-    });
-    return mapInternship(raw);
+    const mapped = mapInternship(raw);
+    notifyStore('cdc_internships');
+    return mapped;
   },
 
   async submitCompletion(

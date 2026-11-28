@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient';
+import { notifyStore } from './storeEvents';
 import { Application, ApplicationStatus, Interview } from '../shared/types';
 
 function mapApplication(a: any): Application {
@@ -37,20 +38,9 @@ export const applicationService = {
         roleId: Number(roleId),
       }),
     });
-    return mapApplication(raw);
-  },
-
-  async advanceApplicationStageMock(
-    applicationId: string,
-    nextStatus: ApplicationStatus,
-    remarks?: string
-  ): Promise<Application | null> {
-    const raw = await apiRequest<any>(`/admin/applications/${applicationId}/stage`, {
-      method: 'PATCH',
-      portal: 'admin',
-      body: JSON.stringify({ status: nextStatus, remarks }),
-    });
-    return mapApplication(raw);
+    const mapped = mapApplication(raw);
+    notifyStore('cdc_applications');
+    return mapped;
   },
 };
 

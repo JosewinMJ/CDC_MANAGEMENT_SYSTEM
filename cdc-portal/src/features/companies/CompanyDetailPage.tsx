@@ -18,8 +18,8 @@ import confetti from 'canvas-confetti';
 import { companyService } from '../../services/companyService';
 import { applicationService } from '../../services/applicationService';
 import { eligibilityService } from '../../services/eligibilityService';
-import { db } from '../../services/storage';
-import { Company, JobRole, EligibilityResult, EligibilityStatus, Application } from '../../shared/types';
+import { studentService } from '../../services/studentService';
+import { Company, JobRole, EligibilityResult, EligibilityStatus, Application, Student } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { formatDate } from '../../shared/utils';
@@ -33,6 +33,7 @@ export const CompanyDetailPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<JobRole | null>(null);
   const [eligibilityResult, setEligibilityResult] = useState<EligibilityResult | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [student, setStudent] = useState<Student | null>(null);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
 
   const { showToast } = useNotification();
@@ -43,20 +44,25 @@ export const CompanyDetailPage: React.FC = () => {
 
   const loadCompany = async () => {
     if (!id) return;
-    const comp = await companyService.getCompanyById(id);
+    const [comp, studentProfile, apps] = await Promise.all([
+      companyService.getCompanyById(id),
+      studentService.getStudentProfile(),
+      applicationService.getApplications(),
+    ]);
     if (!comp) {
       navigate('/student/companies');
       return;
     }
     setCompany(comp);
     setSelectedRole(comp.roles[0]);
-
-    const apps = await applicationService.getApplications();
+    setStudent(studentProfile);
     setApplications(apps);
 
     // Check eligibility for first role
-    const elRes = await eligibilityService.checkEligibility(comp.roles[0].id);
-    if (elRes) setEligibilityResult(elRes.result);
+    if (comp.roles[0]) {
+      const elRes = await eligibilityService.checkEligibility(comp.roles[0].id);
+      if (elRes) setEligibilityResult(elRes.result);
+    }
   };
 
   const handleRoleSelect = async (role: JobRole) => {
@@ -358,9 +364,11 @@ export const CompanyDetailPage: React.FC = () => {
       >
         <div className="space-y-4 text-xs">
           <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl space-y-1">
-            <span className="font-bold text-[#142B4A]">Student Candidate: Sneha R (21BCE1042)</span>
+            <span className="font-bold text-[#142B4A]">
+              Student Candidate: {student ? `${student.fullName} (${student.regNumber})` : 'Verified Student'}
+            </span>
             <p className="text-slate-600">
-              Your verified resume (<code>Sneha_R_Resume_2026.pdf</code>) and official academic CGPA (<strong>8.42</strong>) will be transmitted to the CDC recruiting portal.
+              Your verified resume (<code>{student?.documents?.find(d => d.category === 'Resume')?.name || 'Profile Resume'}</code>) and official academic CGPA (<strong>{student?.academicRecord.currentCgpa ?? '—'}</strong>) will be transmitted to the CDC recruiting portal.
             </p>
           </div>
 

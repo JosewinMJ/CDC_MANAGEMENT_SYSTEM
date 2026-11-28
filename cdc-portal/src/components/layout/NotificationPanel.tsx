@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, AlertTriangle, Briefcase, FileText, ChevronRight } from 'lucide-react';
 import { noticeService } from '../../services/noticeService';
 import { parentAlertService } from '../../services/parentAlertService';
+import { studentService } from '../../services/studentService';
 import { Notice, ParentAlert } from '../../shared/types';
 import { formatDateTime } from '../../shared/utils';
 
@@ -14,6 +15,7 @@ interface NotificationPanelProps {
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, onClose }) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [alerts, setAlerts] = useState<ParentAlert[]>([]);
+  const [studentId, setStudentId] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,12 +25,14 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, on
   }, [isOpen]);
 
   const loadData = async () => {
-    const [allNotices, allAlerts] = await Promise.all([
+    const [allNotices, allAlerts, profile] = await Promise.all([
       noticeService.getNotices(),
       parentAlertService.getParentAlerts(),
+      studentService.getStudentProfile(),
     ]);
     setNotices(allNotices);
     setAlerts(allAlerts);
+    setStudentId(profile.id);
   };
 
   const handleMarkAllRead = async () => {
@@ -36,15 +40,15 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, on
     loadData();
   };
 
-  const handleNoticeClick = (notice: Notice) => {
-    noticeService.markAsRead(notice.id);
+  const handleNoticeClick = async (notice: Notice) => {
+    await noticeService.markAsRead(notice.id);
     onClose();
     navigate('/student/notices');
   };
 
   if (!isOpen) return null;
 
-  const unreadNotices = notices.filter(n => !n.readByStudentIds.includes('stud-21bce1042'));
+  const unreadNotices = notices.filter(n => !studentId || !n.readByStudentIds.includes(studentId));
 
   return (
     <div className="absolute right-0 top-12 z-50 w-96 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2">

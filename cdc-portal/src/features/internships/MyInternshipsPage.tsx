@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { internshipService } from '../../services/internshipService';
-import { db, subscribeToStore } from '../../services/storage';
+import { subscribeToStore } from '../../services/storeEvents';
 import {
   Internship,
   InternshipTrack,

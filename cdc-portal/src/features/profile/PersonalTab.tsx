@@ -1,48 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Edit2,
   Lock,
   MessageSquare,
 } from 'lucide-react';
-import { db } from '../../services/storage';
 import { studentService } from '../../services/studentService';
 import { parentAlertService } from '../../services/parentAlertService';
-import { Student, ParentContact, NotificationChannel } from '../../shared/types';
+import { Student, NotificationChannel } from '../../shared/types';
 import { Modal } from '../../components/common/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { maskPhoneNumber } from '../../shared/utils';
 
 export const PersonalTab: React.FC = () => {
-  const [student, setStudent] = useState<Student>(db.getStudent());
+  const [student, setStudent] = useState<Student | null>(null);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
-  const [phone, setPhone] = useState(student.phone);
-  const [address, setAddress] = useState(student.address);
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
 
   // Parent Contact Modal States
   const [isParentModalOpen, setIsParentModalOpen] = useState(false);
-  const [parentName, setParentName] = useState(student.parentContact.name);
-  const [relationship, setRelationship] = useState(student.parentContact.relationship);
-  const [parentPhone, setParentPhone] = useState(student.parentContact.phone);
-  const [parentEmail, setParentEmail] = useState(student.parentContact.email || '');
-  const [preferredChannel, setPreferredChannel] = useState<NotificationChannel>(
-    student.parentContact.preferredChannel
-  );
-  const [consentGiven, setConsentGiven] = useState(student.parentContact.consentGiven);
+  const [parentName, setParentName] = useState('');
+  const [relationship, setRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Father');
+  const [parentPhone, setParentPhone] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [preferredChannel, setPreferredChannel] = useState<NotificationChannel>(NotificationChannel.WHATSAPP);
+  const [consentGiven, setConsentGiven] = useState(false);
 
-  // OTP flow simulation
+  // OTP flow
   const [otpSent, setOtpSent] = useState(false);
   const [enteredOtp, setEnteredOtp] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
 
   const { showToast } = useNotification();
+
+  const applyStudentState = (data: Student) => {
+    setStudent(data);
+    setPhone(data.phone || '');
+    setAddress(data.address || '');
+    setParentName(data.parentContact?.name || '');
+    setRelationship(data.parentContact?.relationship || 'Father');
+    setParentPhone(data.parentContact?.phone || '');
+    setParentEmail(data.parentContact?.email || '');
+    setPreferredChannel(data.parentContact?.preferredChannel || NotificationChannel.WHATSAPP);
+    setConsentGiven(Boolean(data.parentContact?.consentGiven));
+  };
+
+  useEffect(() => {
+    studentService.getStudentProfile().then(applyStudentState).catch(() => {});
+  }, []);
+
+  if (!student) {
+    return <div className="p-8 text-center text-xs text-slate-500">Loading personal details...</div>;
+  }
 
   const handleSavePersonal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +92,7 @@ export const PersonalTab: React.FC = () => {
       }
     }
 
-    const updatedContact = await parentAlertService.updateParentContact({
+    await parentAlertService.updateParentContact({
       name: parentName,
       relationship,
       phone: parentPhone,
@@ -89,7 +101,8 @@ export const PersonalTab: React.FC = () => {
       consentGiven,
     });
 
-    setStudent(db.getStudent());
+    const refreshed = await studentService.getStudentProfile();
+    applyStudentState(refreshed);
     setIsParentModalOpen(false);
     setOtpSent(false);
     setEnteredOtp('');

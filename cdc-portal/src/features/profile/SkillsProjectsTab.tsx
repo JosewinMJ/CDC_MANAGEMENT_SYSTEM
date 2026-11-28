@@ -1,29 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Code2,
   Terminal,
   FolderGit2,
   Award,
   ExternalLink,
-  Plus,
   X,
   Sparkles,
   ChevronRight,
 } from 'lucide-react';
-import { db } from '../../services/storage';
-import { Student, Project, Certification } from '../../shared/types';
-import { profileService } from '../../services/profileService';
+import { Student, CodingProfile } from '../../shared/types';
+import { profileService, studentService } from '../../services/studentService';
+import { codingChallengeService } from '../../services/codingChallengeService';
+import { subscribeToStore } from '../../services/storeEvents';
 import { useNotification } from '../../context/NotificationContext';
 
 export const SkillsProjectsTab: React.FC = () => {
   const navigate = useNavigate();
-  const [student, setStudent] = useState<Student>(db.getStudent());
-  const coding = db.getCodingProfile();
+  const [student, setStudent] = useState<Student | null>(null);
+  const [coding, setCoding] = useState<CodingProfile | null>(null);
   const { showToast } = useNotification();
 
   const [newSkill, setNewSkill] = useState('');
   const [skillCategory, setSkillCategory] = useState<'technicalSkills' | 'programmingLanguages' | 'toolsAndTechnologies'>('technicalSkills');
+
+  const loadData = async () => {
+    const [profile, code] = await Promise.all([
+      studentService.getStudentProfile(),
+      codingChallengeService.getCodingProfile(),
+    ]);
+    setStudent(profile);
+    setCoding(code);
+  };
+
+  useEffect(() => {
+    loadData().catch(() => {});
+    const unsub1 = subscribeToStore('cdc_student', loadData);
+    const unsub2 = subscribeToStore('cdc_coding_profile', loadData);
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, []);
+
+  if (!student || !coding) {
+    return <div className="p-8 text-center text-xs text-slate-500">Loading skills and coding stats...</div>;
+  }
 
   const handleAddSkill = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,9 +53,9 @@ export const SkillsProjectsTab: React.FC = () => {
 
     const currentSkills = { ...student.skills };
     if (!currentSkills[skillCategory].includes(newSkill.trim())) {
-      currentSkills[skillCategory].push(newSkill.trim());
+      currentSkills[skillCategory] = [...currentSkills[skillCategory], newSkill.trim()];
       await profileService.updateSkills(currentSkills);
-      setStudent(db.getStudent());
+      await loadData();
       setNewSkill('');
       showToast({ type: 'success', title: 'Skill Added', message: `Added ${newSkill.trim()}` });
     }
@@ -43,7 +65,7 @@ export const SkillsProjectsTab: React.FC = () => {
     const currentSkills = { ...student.skills };
     currentSkills[category] = currentSkills[category].filter(s => s !== skillToRemove);
     await profileService.updateSkills(currentSkills);
-    setStudent(db.getStudent());
+    await loadData();
   };
 
   return (

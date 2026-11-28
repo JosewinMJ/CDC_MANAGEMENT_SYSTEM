@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   BellRing,
@@ -14,40 +14,59 @@ import {
   Info,
 } from 'lucide-react';
 import { parentAlertService } from '../../services/parentAlertService';
-import { companyService } from '../../services/companyService';
-import { db, subscribeToStore } from '../../services/storage';
+import { eligibilityService } from '../../services/companyService';
+import { applicationService } from '../../services/applicationService';
+import { subscribeToStore } from '../../services/storeEvents';
 import {
   ParentAlert,
   ParentContact,
   ParentAlertDeliveryStatus,
-  ParentAlertType,
+  EligibilityStatus,
 } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
-import { formatDate, formatDateTime, maskPhoneNumber } from '../../shared/utils';
+import { formatDate, formatDateTime } from '../../shared/utils';
 
 export const ParentAlertsPage: React.FC = () => {
-  const navigate = useNavigate();
   const [alerts, setAlerts] = useState<ParentAlert[]>([]);
-  const [parentContact, setParentContact] = useState<ParentContact>(db.getStudent().parentContact);
+  const [parentContact, setParentContact] = useState<ParentContact | null>(null);
+  const [pendingCompanies, setPendingCompanies] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<'ALL' | ParentAlertDeliveryStatus>('ALL');
   const [previewAlert, setPreviewAlert] = useState<ParentAlert | null>(null);
 
   const loadData = async () => {
-    const list = await parentAlertService.getParentAlerts();
+    const [list, contact, summaries, apps] = await Promise.all([
+      parentAlertService.getParentAlerts(),
+      parentAlertService.getParentContact(),
+      eligibilityService.getAllEligibilitySummaries(),
+      applicationService.getApplications(),
+    ]);
     setAlerts(list);
-    setParentContact(db.getStudent().parentContact);
+    setParentContact(contact);
+    const appliedIds = apps.map(a => a.companyId);
+    const eligibleUnappliedNames = Array.from(
+      new Set(
+        summaries
+          .filter(s => s.result.overallStatus === EligibilityStatus.ELIGIBLE && !appliedIds.includes(s.company.id))
+          .map(s => s.company.name)
+      )
+    );
+    setPendingCompanies(eligibleUnappliedNames);
   };
 
   useEffect(() => {
     loadData();
     const unsub = subscribeToStore('cdc_parent_alerts', loadData);
-    return () => unsub();
+    const unsubStudent = subscribeToStore('cdc_student', loadData);
+    return () => {
+      unsub();
+      unsubStudent();
+    };
   }, []);
 
   const alertsSent = alerts.filter(a => a.deliveryStatus === ParentAlertDeliveryStatus.DELIVERED || a.deliveryStatus === ParentAlertDeliveryStatus.SENT).length;
   const scheduledAlerts = alerts.filter(a => a.deliveryStatus === ParentAlertDeliveryStatus.SCHEDULED).length;
-  const pendingCompaniesCount = 2; // Infosys & TCS
+  const pendingCompaniesCount = pendingCompanies.length;
 
   const filteredAlerts = alerts.filter(a => {
     if (statusFilter === 'ALL') return true;
@@ -108,7 +127,9 @@ export const ParentAlertsPage: React.FC = () => {
               Eligible & Unapplied
             </span>
             <span className="text-2xl font-bold text-[#2855A6] mt-1 block">{pendingCompaniesCount}</span>
-            <span className="text-[11px] text-slate-500">Infosys & TCS Limited</span>
+            <span className="text-[11px] text-slate-500">
+              {pendingCompanies.length > 0 ? pendingCompanies.join(', ') : 'All eligible drives applied'}
+            </span>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#2855A6] flex items-center justify-center">
             <AlertTriangle className="w-6 h-6" />
@@ -128,7 +149,7 @@ export const ParentAlertsPage: React.FC = () => {
             </p>
           </div>
           <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-            Registered: {parentContact.name} ({parentContact.phone})
+            Registered: {parentContact?.name || 'Parent Contact'} ({parentContact?.phone || 'Not set'})
           </span>
         </div>
 
@@ -268,7 +289,7 @@ export const ParentAlertsPage: React.FC = () => {
           isOpen={!!previewAlert}
           onClose={() => setPreviewAlert(null)}
           title="Parent Alert Message Preview"
-          subtitle={`Dispatched to ${parentContact.name} (${previewAlert.recipientMaskedPhone}) via ${previewAlert.channel}`}
+          subtitle={`Dispatched to ${parentContact?.name || 'Parent/Guardian'} (${previewAlert.recipientMaskedPhone}) via ${previewAlert.channel}`}
           maxWidth="md"
         >
           <div className="space-y-4 text-xs">

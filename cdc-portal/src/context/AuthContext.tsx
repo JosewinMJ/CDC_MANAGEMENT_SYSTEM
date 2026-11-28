@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../shared/types';
 import {
   apiRequest,
@@ -54,6 +54,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const activeScope = detectPortalFromPath();
   const activeUser = readStoredUser(activeScope);
+
+  useEffect(() => {
+    const scopes: PortalScope[] = ['student', 'guide', 'admin'];
+    scopes.forEach(scope => {
+      if (!getAuthToken(scope)) return;
+      apiRequest<AuthenticatedUser>('/auth/me', { portal: scope })
+        .then(user => {
+          if (roleMatchesPortal(user.role, scope)) {
+            localStorage.setItem(USER_KEYS[scope], JSON.stringify(user));
+            bump();
+          } else {
+            setAuthToken(null, scope);
+            localStorage.removeItem(USER_KEYS[scope]);
+            bump();
+          }
+        })
+        .catch(() => {
+          setAuthToken(null, scope);
+          localStorage.removeItem(USER_KEYS[scope]);
+          bump();
+        });
+    });
+  }, []);
 
   const fallbackUser: AuthenticatedUser = {
     id: 'guest',

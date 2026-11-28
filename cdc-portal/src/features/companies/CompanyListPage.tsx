@@ -15,7 +15,7 @@ import {
 import { companyService } from '../../services/companyService';
 import { applicationService } from '../../services/applicationService';
 import { eligibilityService } from '../../services/eligibilityService';
-import { db, subscribeToStore } from '../../services/storage';
+import { subscribeToStore } from '../../services/storeEvents';
 import { Company, Application, EligibilityStatus } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { formatDate } from '../../shared/utils';
@@ -134,6 +134,7 @@ export const CompanyListPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {filteredCompanies.map(company => {
           const primaryRole = company.roles[0];
+          if (!primaryRole) return null;
           const isEligible = company.roles.some(r => eligibilityMap[r.id] === EligibilityStatus.ELIGIBLE);
           const isApplied = company.roles.some(r => appliedRoleIds.includes(r.id));
           const hasMultipleRoles = company.roles.length > 1;

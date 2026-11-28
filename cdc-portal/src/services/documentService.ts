@@ -25,16 +25,4 @@ export const documentService = {
   async deleteDocument(id: string) {
     return apiRequest('/students/me/documents/' + id, { portal: 'student', method: 'DELETE' });
   },
-
-  async verifyDocumentMock(
-    docId: string,
-    status: DocumentVerificationStatus,
-    remarks?: string
-  ): Promise<Document | null> {
-    return apiRequest<Document>(`/documents/${docId}/verification`, {
-      method: 'PATCH',
-      portal: 'guide',
-      body: JSON.stringify({ status, remarks }),
-    });
-  },
 };

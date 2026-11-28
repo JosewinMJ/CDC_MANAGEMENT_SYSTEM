@@ -10,6 +10,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NotificationPanel } from './NotificationPanel';
 import { noticeService } from '../../services/noticeService';
+import { studentService } from '../../services/studentService';
+import { subscribeToStore } from '../../services/storeEvents';
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -25,12 +27,16 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
 
   useEffect(() => {
     loadUnread();
+    return subscribeToStore('cdc_notices', loadUnread);
   }, [location.pathname]);
 
   const loadUnread = async () => {
     try {
-      const notices = await noticeService.getNotices();
-      const unread = notices.filter(n => !(n.readByStudentIds || []).includes(currentUser.id)).length;
+      const [notices, profile] = await Promise.all([
+        noticeService.getNotices(),
+        studentService.getStudentProfile(),
+      ]);
+      const unread = notices.filter(n => !(n.readByStudentIds || []).includes(profile.id)).length;
       setUnreadCount(unread);
     } catch {
       setUnreadCount(0);

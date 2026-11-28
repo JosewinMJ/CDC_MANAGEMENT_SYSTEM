@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { applicationService } from '../../services/applicationService';
-import { db, subscribeToStore } from '../../services/storage';
+import { subscribeToStore } from '../../services/storeEvents';
 import { Application, ApplicationStatus } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';

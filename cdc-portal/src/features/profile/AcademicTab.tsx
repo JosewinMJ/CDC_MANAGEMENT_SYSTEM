@@ -1,17 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  GraduationCap,
-  ShieldCheck,
-  AlertCircle,
   FileQuestion,
-  Clock,
-  ArrowRight,
-  Upload,
   CheckCircle2,
 } from 'lucide-react';
-import { db } from '../../services/storage';
 import { studentService } from '../../services/studentService';
-import { Student, AcademicRecord, DocumentVerificationStatus } from '../../shared/types';
+import { Student, AcademicCorrectionRequest } from '../../shared/types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { FileUploader } from '../../components/common/FileUploader';
@@ -19,18 +12,38 @@ import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../shared/utils';
 
 export const AcademicTab: React.FC = () => {
-  const [student, setStudent] = useState<Student>(db.getStudent());
-  const academic = student.academicRecord;
+  const [student, setStudent] = useState<Student | null>(null);
+  const [corrections, setCorrections] = useState<AcademicCorrectionRequest[]>([]);
 
   // Correction Request Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [correctionField, setCorrectionField] = useState('currentCgpa');
-  const [currentVal, setCurrentVal] = useState(String(academic.currentCgpa));
+  const [currentVal, setCurrentVal] = useState('');
   const [requestedVal, setRequestedVal] = useState('');
   const [reason, setReason] = useState('');
   const [supportingDoc, setSupportingDoc] = useState('');
 
   const { showToast } = useNotification();
+
+  const loadAcademicData = async () => {
+    const [profile, tickets] = await Promise.all([
+      studentService.getStudentProfile(),
+      studentService.getAcademicCorrections(),
+    ]);
+    setStudent(profile);
+    setCorrections(tickets);
+    setCurrentVal(String(profile.academicRecord.currentCgpa));
+  };
+
+  useEffect(() => {
+    loadAcademicData().catch(() => {});
+  }, []);
+
+  if (!student) {
+    return <div className="p-8 text-center text-xs text-slate-500">Loading academic profile...</div>;
+  }
+
+  const academic = student.academicRecord;
 
   const handleFieldChange = (field: string) => {
     setCorrectionField(field);
@@ -56,7 +69,7 @@ export const AcademicTab: React.FC = () => {
       supportingDocName: supportingDoc || 'Consolidated_GradeSheet.pdf',
     });
 
-    setStudent(db.getStudent());
+    await loadAcademicData();
     setIsModalOpen(false);
     setRequestedVal('');
     setReason('');
@@ -78,7 +91,10 @@ export const AcademicTab: React.FC = () => {
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-[#142B4A]">Official Academic Profile</h3>
               <StatusBadge status={academic.verificationStatus} />
-              {academic.correctionPending && (
+              {corrections.length > 0 && (
+                <span className="sr-only">{corrections.length} correction request(s) recorded</span>
+              )}
+              {(academic.correctionPending || corrections.some(c => c.status === 'PENDING')) && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                   Correction Request Under Review
                 </span>

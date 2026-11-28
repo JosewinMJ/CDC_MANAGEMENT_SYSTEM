@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient';
+import { notifyStore } from './storeEvents';
 import { Student, AcademicCorrectionRequest } from '../shared/types';
 
 export const studentService = {
@@ -7,21 +8,25 @@ export const studentService = {
   },
 
   async updatePersonalProfile(data: Partial<Pick<Student, 'phone' | 'address' | 'avatarUrl'>>): Promise<Student> {
-    return apiRequest<Student>('/students/me/personal', {
+    const res = await apiRequest<Student>('/students/me/personal', {
       method: 'PATCH',
       portal: 'student',
       body: JSON.stringify(data),
     });
+    notifyStore('cdc_student');
+    return res;
   },
 
   async requestAcademicCorrection(
     request: Omit<AcademicCorrectionRequest, 'id' | 'status' | 'submittedAt'>
   ): Promise<AcademicCorrectionRequest> {
-    return apiRequest<AcademicCorrectionRequest>('/students/me/academic-correction', {
+    const res = await apiRequest<AcademicCorrectionRequest>('/students/me/academic-correction', {
       method: 'POST',
       portal: 'student',
       body: JSON.stringify(request),
     });
+    notifyStore('cdc_student');
+    return res;
   },
 
   async getAcademicCorrections(): Promise<AcademicCorrectionRequest[]> {
@@ -50,10 +55,12 @@ export const profileService = {
   },
 
   async updateSkills(skills: Student['skills']): Promise<Student['skills']> {
-    return apiRequest<Student['skills']>('/students/me/skills', {
+    const res = await apiRequest<Student['skills']>('/students/me/skills', {
       method: 'PATCH',
       portal: 'student',
       body: JSON.stringify({ skills }),
     });
+    notifyStore('cdc_student');
+    return res;
   },
 };

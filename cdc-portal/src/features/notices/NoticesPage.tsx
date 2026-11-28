@@ -13,22 +13,27 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { noticeService } from '../../services/noticeService';
-import { db, subscribeToStore } from '../../services/storage';
+import { studentService } from '../../services/studentService';
+import { subscribeToStore } from '../../services/storeEvents';
 import { Notice, NoticeCategory, NoticePriority } from '../../shared/types';
 import { formatDateTime } from '../../shared/utils';
 import { useNotification } from '../../context/NotificationContext';
 
 export const NoticesPage: React.FC = () => {
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [currentStudentId, setCurrentStudentId] = useState('');
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<NoticeCategory>(NoticeCategory.ALL);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
 
   const { showToast } = useNotification();
-  const currentStudentId = 'stud-21bce1042';
 
   const loadNotices = async () => {
-    const list = await noticeService.getNotices();
+    const [list, profile] = await Promise.all([
+      noticeService.getNotices(),
+      studentService.getStudentProfile(),
+    ]);
+    setCurrentStudentId(profile.id);
     setNotices(list);
     if (!selectedNotice && list.length > 0) {
       setSelectedNotice(list[0]);
@@ -47,11 +52,11 @@ export const NoticesPage: React.FC = () => {
     showToast({ type: 'success', title: 'All Notices Marked Read', message: 'Unread indicators cleared.' });
   };
 
-  const handleSelectNotice = (notice: Notice) => {
+  const handleSelectNotice = async (notice: Notice) => {
     setSelectedNotice(notice);
-    if (!notice.readByStudentIds.includes(currentStudentId)) {
-      noticeService.markAsRead(notice.id);
-      loadNotices();
+    if (currentStudentId && !notice.readByStudentIds.includes(currentStudentId)) {
+      await noticeService.markAsRead(notice.id);
+      await loadNotices();
     }
   };
 

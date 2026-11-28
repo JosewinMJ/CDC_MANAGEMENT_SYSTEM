@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { companyService } from '../../services/companyService';
 import { eligibilityService } from '../../services/eligibilityService';
-import { db, subscribeToStore } from '../../services/storage';
+import { subscribeToStore } from '../../services/storeEvents';
 import {
   Company,
   JobRole,

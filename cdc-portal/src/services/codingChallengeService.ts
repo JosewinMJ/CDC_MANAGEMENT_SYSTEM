@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient';
+import { notifyStore } from './storeEvents';
 import {
   CodingProfile,
   CodingTrackingStatus,
@@ -41,25 +42,31 @@ export const codingChallengeService = {
   },
 
   async registerLeetCode(username: string): Promise<LiveCodingProfileResponse> {
-    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/register-username', {
+    const res = await apiRequest<LiveCodingProfileResponse>('/coding-challenge/register-username', {
       method: 'POST',
       portal: 'student',
       body: JSON.stringify({ username }),
     });
+    notifyStore('cdc_coding_profile');
+    return res;
   },
 
   async syncFromLeetCode(): Promise<LiveCodingProfileResponse> {
-    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/sync-leetcode', {
+    const res = await apiRequest<LiveCodingProfileResponse>('/coding-challenge/sync-leetcode', {
       method: 'POST',
       portal: 'student',
     });
+    notifyStore('cdc_coding_profile');
+    return res;
   },
 
   async toggleSolvePostedQuestion(questionId: string): Promise<PostedQuestion | null> {
-    return apiRequest<PostedQuestion>(`/coding-challenge/posted-questions/${questionId}/toggle`, {
+    const res = await apiRequest<PostedQuestion>(`/coding-challenge/posted-questions/${questionId}/toggle`, {
       method: 'POST',
       portal: 'student',
     });
+    notifyStore('cdc_coding_profile');
+    return res;
   },
 
   async logCustomSolve(payload: {
@@ -68,10 +75,12 @@ export const codingChallengeService = {
     difficulty: ProblemDifficulty;
     topics?: string[];
   }): Promise<LiveCodingProfileResponse> {
-    return apiRequest<LiveCodingProfileResponse>('/coding-challenge/log-solve', {
+    const res = await apiRequest<LiveCodingProfileResponse>('/coding-challenge/log-solve', {
       method: 'POST',
       portal: 'student',
       body: JSON.stringify(payload),
     });
+    notifyStore('cdc_coding_profile');
+    return res;
   },
 };

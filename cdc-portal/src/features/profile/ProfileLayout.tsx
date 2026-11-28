@@ -12,7 +12,8 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Tabs, TabItem } from '../../components/common/Tabs';
-import { db } from '../../services/storage';
+import { studentService } from '../../services/studentService';
+import { subscribeToStore } from '../../services/storeEvents';
 import { Student } from '../../shared/types';
 import { PersonalTab } from './PersonalTab';
 import { AcademicTab } from './AcademicTab';
@@ -24,7 +25,29 @@ import { PlacementHistoryTab } from './PlacementHistoryTab';
 export const ProfileLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [student, setStudent] = useState<Student>(db.getStudent());
+  const [student, setStudent] = useState<Student | null>(null);
+
+  const loadStudent = async () => {
+    try {
+      const profile = await studentService.getStudentProfile();
+      setStudent(profile);
+    } catch {
+      // handled by auth guard if unauthenticated
+    }
+  };
+
+  useEffect(() => {
+    loadStudent();
+    return subscribeToStore('cdc_student', loadStudent);
+  }, []);
+
+  if (!student) {
+    return <div className="p-8 text-center text-xs text-slate-500">Loading student profile...</div>;
+  }
+
+  const avatarSrc =
+    student.avatarUrl ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullName)}&background=142B4A&color=fff&bold=true`;
 
   const currentTab = location.pathname.split('/')[3] || 'personal';
 
@@ -42,7 +65,7 @@ export const ProfileLayout: React.FC = () => {
       {/* Profile Header Card */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex flex-col sm:flex-row items-center sm:items-start gap-6">
         <img
-          src={student.avatarUrl}
+          src={avatarSrc}
           alt={student.fullName}
           className="w-24 h-24 rounded-2xl object-cover ring-4 ring-[#EAF2FF] shadow-xs"
         />

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { internshipService } from '../../services/internshipService';
-import { db } from '../../services/storage';
+import { studentService } from '../../services/studentService';
 import {
   InternshipTrack,
   InternshipMode,
@@ -29,8 +29,6 @@ export const RegisterInternshipPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showToast } = useNotification();
-
-  const student = db.getStudent();
 
   // Track selection
   const initialTrack = searchParams.get('track') === '1'
@@ -76,8 +74,15 @@ export const RegisterInternshipPage: React.FC = () => {
   const [workProfile, setWorkProfile] = useState('');
 
   // Step 3: Guide Details
-  const [facultyGuideId, setFacultyGuideId] = useState(student.assignedGuideId);
-  const [facultyGuideName, setFacultyGuideName] = useState(student.assignedGuideName);
+  const [facultyGuideId, setFacultyGuideId] = useState('');
+  const [facultyGuideName, setFacultyGuideName] = useState('Assigned Faculty Guide');
+
+  useEffect(() => {
+    studentService.getStudentProfile().then(s => {
+      setFacultyGuideId(s.assignedGuideId);
+      setFacultyGuideName(s.assignedGuideName || 'Assigned Faculty Guide');
+    }).catch(() => {});
+  }, []);
 
   // Step 4: Documents Upload
   const [files, setFiles] = useState<Record<string, File | undefined>>({});

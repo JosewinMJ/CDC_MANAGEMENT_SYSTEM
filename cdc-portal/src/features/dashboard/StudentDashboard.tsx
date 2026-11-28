@@ -21,10 +21,11 @@ import {
 import { StatCard } from '../../components/common/StatCard';
 import { ProgressRing } from '../../components/common/ProgressRing';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { db, subscribeToStore } from '../../services/storage';
-import { companyService } from '../../services/companyService';
+import { subscribeToStore } from '../../services/storeEvents';
+import { studentService } from '../../services/studentService';
+import { companyService, eligibilityService } from '../../services/companyService';
 import { applicationService } from '../../services/applicationService';
-import { interviewService } from '../../services/interviewService';
+import { interviewService } from '../../services/applicationService';
 import { internshipService } from '../../services/internshipService';
 import { noticeService } from '../../services/noticeService';
 import { parentAlertService } from '../../services/parentAlertService';
@@ -39,25 +40,28 @@ import {
   ParentAlert,
   CodingProfile,
   InternshipTrack,
+  EligibilityStatus,
 } from '../../shared/types';
 import { formatDate } from '../../shared/utils';
 
 export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
 
-  const [student, setStudent] = useState<Student>(db.getStudent());
+  const [student, setStudent] = useState<Student | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [eligibleCompanyIds, setEligibleCompanyIds] = useState<string[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [internships, setInternships] = useState<Internship[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [alerts, setAlerts] = useState<ParentAlert[]>([]);
-  const [coding, setCoding] = useState<CodingProfile>(db.getCodingProfile());
+  const [coding, setCoding] = useState<CodingProfile | null>(null);
 
   const loadAll = async () => {
-    setStudent(db.getStudent());
-    const [comps, apps, ints, internList, nots, alrts, code] = await Promise.all([
+    const [stud, comps, eligSummaries, apps, ints, internList, nots, alrts, code] = await Promise.all([
+      studentService.getStudentProfile(),
       companyService.getCompanies(),
+      eligibilityService.getAllEligibilitySummaries(),
       applicationService.getApplications(),
       interviewService.getUpcomingInterviews(),
       internshipService.getInternships(),
@@ -65,7 +69,17 @@ export const StudentDashboard: React.FC = () => {
       parentAlertService.getParentAlerts(),
       codingChallengeService.getCodingProfile(),
     ]);
+    setStudent(stud);
     setCompanies(comps);
+    setEligibleCompanyIds(
+      Array.from(
+        new Set(
+          eligSummaries
+            .filter(s => s.result.overallStatus === EligibilityStatus.ELIGIBLE)
+            .map(s => s.company.id)
+        )
+      )
+    );
     setApplications(apps);
     setInterviews(ints);
     setInternships(internList);
@@ -91,15 +105,30 @@ export const StudentDashboard: React.FC = () => {
     };
   }, []);
 
+  if (!student || !coding) {
+    return <div className="p-8 text-center text-xs text-slate-500">Loading your CDC portal dashboard...</div>;
+  }
+
   // Compute eligible unapplied companies for the Parent Alert Warning Banner
   const appliedCompanyIds = applications.map(a => a.companyId);
   const eligibleUnappliedCompanies = companies.filter(
-    c => !appliedCompanyIds.includes(c.id) && (c.id === 'comp-infosys' || c.id === 'comp-tcs')
+    c => !appliedCompanyIds.includes(c.id) && eligibleCompanyIds.includes(c.id)
   );
 
   const track1 = internships.find(i => i.track === InternshipTrack.TRACK_1_SUMMER);
   const track2 = internships.find(i => i.track === InternshipTrack.TRACK_2_HYBRID);
   const track3 = internships.find(i => i.track === InternshipTrack.TRACK_3_SEMESTER);
+
+  const completionChecks = [
+    Boolean(student.phone && student.address),
+    student.academicRecord.verificationStatus === 'VERIFIED',
+    (student.skills.technicalSkills?.length || 0) > 0,
+    (student.documents?.length || 0) > 0,
+    Boolean(student.documents?.some(d => d.category === 'Resume')),
+    Boolean(student.parentContact?.isVerified),
+  ];
+  const completionPct = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100);
+  const nextScheduledAlert = alerts.find(a => a.deliveryStatus === 'SCHEDULED');
 
   return (
     <div className="space-y-6">
@@ -163,7 +192,7 @@ export const StudentDashboard: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-amber-950 mt-1 leading-snug">
-                You are <strong>Eligible</strong> for <strong>{eligibleUnappliedCompanies.length} companies</strong> ({eligibleUnappliedCompanies.map(c => c.name).join(', ')}) that you have not applied to. As per CDC placement policy, your parent (Rajesh R) will be notified on <strong>27 Nov 2026</strong> via WhatsApp if no action is taken.
+                You are <strong>Eligible</strong> for <strong>{eligibleUnappliedCompanies.length} companies</strong> ({eligibleUnappliedCompanies.map(c => c.name).join(', ')}) that you have not applied to. As per CDC placement policy, your parent ({student.parentContact?.name || 'Parent/Guardian'}) will be notified{nextScheduledAlert ? ` on ${formatDate(nextScheduledAlert.scheduledDate)}` : ''} via {student.parentContact?.preferredChannel || 'WhatsApp'} if no action is taken.
               </p>
             </div>
           </div>
@@ -189,13 +218,13 @@ export const StudentDashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Eligible Companies"
-          value="12"
+          value={eligibleCompanyIds.length}
           subtitle="Companies matching your profile"
           icon={Building2}
           iconBgColor="bg-blue-50"
           iconColor="text-[#2855A6]"
-          trendText="2 pending your application"
-          trendPositive={false}
+          trendText={`${eligibleUnappliedCompanies.length} pending your application`}
+          trendPositive={eligibleUnappliedCompanies.length === 0}
           onClick={() => navigate('/student/companies')}
         />
 
@@ -206,7 +235,7 @@ export const StudentDashboard: React.FC = () => {
           icon={FileCheck2}
           iconBgColor="bg-emerald-50"
           iconColor="text-emerald-600"
-          trendText="1 Shortlisted · 1 Interview"
+          trendText={`${applications.filter(a => a.status === 'SHORTLISTED').length} Shortlisted · ${interviews.length} Interview`}
           trendPositive={true}
           onClick={() => navigate('/student/applications')}
         />
@@ -218,19 +247,19 @@ export const StudentDashboard: React.FC = () => {
           icon={Clock}
           iconBgColor="bg-purple-50"
           iconColor="text-purple-600"
-          trendText="Next: Wipro (05 Dec)"
+          trendText={interviews[0] ? `Next: ${interviews[0].companyName} (${formatDate(interviews[0].scheduledDate)})` : 'No interviews scheduled'}
           trendPositive={true}
           onClick={() => navigate('/student/interviews')}
         />
 
         <StatCard
           title="Internship Status"
-          value={track2 ? 'Track 2 Active' : 'In Progress'}
-          subtitle="Track 1 Verified · Track 2 In Progress"
+          value={track3 ? 'Track 3 Active' : track2 ? track2.status.replace(/_/g, ' ') : track1 ? 'Track 1 Logged' : 'Not Started'}
+          subtitle={`${internships.length} track record(s) in MySQL`}
           icon={Briefcase}
           iconBgColor="bg-teal-50"
           iconColor="text-teal-600"
-          trendText="Cognizant Tech (Hybrid)"
+          trendText={track2?.companyName || track1?.companyName || track3?.companyName || 'Register internship track'}
           trendPositive={true}
           onClick={() => navigate('/student/internships/my-internships')}
         />
@@ -244,7 +273,7 @@ export const StudentDashboard: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs">
             <div className="flex flex-col sm:flex-row items-center gap-6">
               <ProgressRing
-                percentage={85}
+                percentage={completionPct}
                 size={110}
                 strokeWidth={10}
                 color="#2855A6"
@@ -256,7 +285,7 @@ export const StudentDashboard: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-bold text-[#142B4A]">Profile Completion Status</h3>
                   <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    85% Ready
+                    {completionPct}% Ready
                   </span>
                 </div>
                 <p className="text-xs text-[#78869A] mt-1">
@@ -265,27 +294,27 @@ export const StudentDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 text-xs">
                   <div className="flex items-center gap-1.5 text-slate-700">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle className={`w-3.5 h-3.5 ${completionChecks[0] ? 'text-emerald-600' : 'text-amber-500'}`} />
                     <span>Personal Info</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle className={`w-3.5 h-3.5 ${completionChecks[1] ? 'text-emerald-600' : 'text-amber-500'}`} />
                     <span>Academic Details</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle className={`w-3.5 h-3.5 ${completionChecks[2] ? 'text-emerald-600' : 'text-amber-500'}`} />
                     <span>Skills & Projects</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Certificates</span>
+                    <CheckCircle className={`w-3.5 h-3.5 ${completionChecks[3] ? 'text-emerald-600' : 'text-amber-500'}`} />
+                    <span>Documents ({student.documents?.length || 0})</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-amber-700 font-semibold">
-                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <div className={`flex items-center gap-1.5 font-semibold ${completionChecks[4] ? 'text-slate-700' : 'text-amber-700'}`}>
+                    {completionChecks[4] ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-amber-600" />}
                     <span>Resume Upload</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle className={`w-3.5 h-3.5 ${completionChecks[5] ? 'text-emerald-600' : 'text-amber-500'}`} />
                     <span>Parent Contact (OTP)</span>
                   </div>
                 </div>
@@ -329,13 +358,15 @@ export const StudentDashboard: React.FC = () => {
                   <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
                     Track 1 (2nd Year)
                   </span>
-                  <StatusBadge status="COMPLETED" />
+                  <StatusBadge status={track1 ? track1.status : 'NOT_STARTED'} />
                 </div>
                 <h4 className="text-xs font-bold text-slate-800">Summer Internship</h4>
                 <p className="text-[11px] text-slate-600 truncate">
-                  Infosys Springboard (8 wks · ₹10k/mo)
+                  {track1 ? `${track1.companyName} (${track1.durationWeeks} wks)` : '6–8 weeks summer project'}
                 </p>
-                <div className="text-[10px] text-emerald-700 font-medium">✓ Verified & Approved</div>
+                <div className="text-[10px] text-emerald-700 font-medium">
+                  {track1 ? track1.jobRole : 'Not registered yet'}
+                </div>
               </div>
 
               {/* Track 2 */}
@@ -344,14 +375,14 @@ export const StudentDashboard: React.FC = () => {
                   <span className="text-[10px] font-bold text-[#2855A6] uppercase tracking-wider">
                     Track 2 (3rd Year)
                   </span>
-                  <StatusBadge status="IN_PROGRESS" />
+                  <StatusBadge status={track2 ? track2.status : 'NOT_STARTED'} />
                 </div>
                 <h4 className="text-xs font-bold text-slate-900">Hybrid Internship</h4>
                 <p className="text-[11px] text-slate-700 truncate">
-                  Cognizant Tech (12 wks · ₹15k/mo)
+                  {track2 ? `${track2.companyName} (${track2.durationWeeks} wks)` : '10–12 weeks industry track'}
                 </p>
                 <div className="text-[10px] text-blue-700 font-semibold">
-                  ⚡ Guide & CDC Approved (Ongoing)
+                  {track2 ? `${track2.jobRole} · ${track2.mode || 'Hybrid'}` : 'Ready for registration'}
                 </div>
               </div>
 
@@ -361,17 +392,17 @@ export const StudentDashboard: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Track 3 (4th Year)
                   </span>
-                  <StatusBadge status="NOT_STARTED" />
+                  <StatusBadge status={track3 ? track3.status : 'NOT_STARTED'} />
                 </div>
                 <h4 className="text-xs font-bold text-slate-700">7th & 8th Semesters</h4>
                 <p className="text-[11px] text-slate-500 truncate">
-                  Odd & Even semester split
+                  {track3 ? `${track3.companyName} (${track3.semester || '4th Year'})` : 'Odd & Even semester split'}
                 </p>
                 <button
-                  onClick={() => navigate('/student/internships/register')}
+                  onClick={() => navigate('/student/internships/register?track=3')}
                   className="text-[10px] font-bold text-[#2855A6] hover:underline"
                 >
-                  Start Registration →
+                  {track3 ? 'View Details →' : 'Start Registration →'}
                 </button>
               </div>
             </div>
@@ -522,8 +553,9 @@ export const StudentDashboard: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {companies.slice(0, 5).map(company => {
                 const primaryRole = company.roles[0];
+                if (!primaryRole) return null;
                 const isApplied = appliedCompanyIds.includes(company.id);
-                const isEligible = company.id !== 'comp-google' && company.id !== 'comp-microsoft';
+                const isEligible = eligibleCompanyIds.includes(company.id);
 
                 return (
                   <tr key={company.id} className="hover:bg-slate-50/80 transition">
@@ -645,7 +677,7 @@ export const StudentDashboard: React.FC = () => {
 
           <div className="space-y-3">
             {notices.slice(0, 3).map(notice => {
-              const isUnread = !notice.readByStudentIds.includes('stud-21bce1042');
+              const isUnread = !notice.readByStudentIds.includes(student.id);
               return (
                 <div
                   key={notice.id}

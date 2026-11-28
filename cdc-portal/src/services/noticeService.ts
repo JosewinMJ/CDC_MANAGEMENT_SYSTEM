@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient';
+import { notifyStore } from './storeEvents';
 import { Notice, NoticeCategory, NoticePriority, CalendarEvent } from '../shared/types';
 
 function mapNotice(n: any): Notice {
@@ -30,35 +31,15 @@ export const noticeService = {
       method: 'POST',
       portal: 'student',
     });
-    return mapNotice(raw);
+    const mapped = mapNotice(raw);
+    notifyStore('cdc_notices');
+    return mapped;
   },
 
   async markAllAsRead(): Promise<boolean> {
     await apiRequest('/notices/read-all', { method: 'POST', portal: 'student' });
+    notifyStore('cdc_notices');
     return true;
-  },
-
-  async publishNoticeMock(noticeData: {
-    title: string;
-    content: string;
-    category: NoticeCategory;
-    priority: NoticePriority;
-    isImportant: boolean;
-    publisherName: string;
-    publisherRole: 'CDC Administrator' | 'Placement Coordinator' | 'Faculty Guide';
-  }): Promise<Notice> {
-    const raw = await apiRequest<any>('/admin/notices', {
-      method: 'POST',
-      portal: 'admin',
-      body: JSON.stringify({
-        title: noticeData.title,
-        content: noticeData.content,
-        category: noticeData.category,
-        priority: noticeData.priority,
-        target_portal: 'all',
-      }),
-    });
-    return mapNotice(raw);
   },
 };
 

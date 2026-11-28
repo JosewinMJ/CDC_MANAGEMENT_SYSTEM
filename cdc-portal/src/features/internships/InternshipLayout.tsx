@@ -13,7 +13,7 @@ import {
 import { Tabs, TabItem } from '../../components/common/Tabs';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { internshipService } from '../../services/internshipService';
-import { db, subscribeToStore } from '../../services/storage';
+import { subscribeToStore } from '../../services/storeEvents';
 import { Internship, InternshipTrack, InternshipStatus } from '../../shared/types';
 
 export const InternshipLayout: React.FC = () => {
