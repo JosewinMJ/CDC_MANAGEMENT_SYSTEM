@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicCorrection;
 use App\Models\Application;
+use App\Models\CalendarEvent;
 use App\Models\Company;
 use App\Models\Internship;
+use App\Models\Interview;
 use App\Models\JobRole;
 use App\Models\Notice;
+use App\Models\ParentAlert;
 use App\Models\StudentProfile;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
@@ -309,5 +312,169 @@ class StudentPortalController extends Controller
         $role = $request->user()->role;
         $scope = $role === 'STUDENT' ? ['all', 'student'] : ($role === 'GUIDE' ? ['all', 'guide'] : ['all', 'student', 'guide']);
         return response()->json(Notice::whereIn('target_portal', $scope)->latest()->get());
+    }
+
+    public function markNoticeRead(Request $request, int $id): JsonResponse
+    {
+        $notice = Notice::findOrFail($id);
+        $profile = StudentProfile::where('user_id', $request->user()->id)->first();
+        $studentKey = $profile ? (string)$profile->id : (string)$request->user()->id;
+        $readers = $notice->read_by_student_ids ?? [];
+        if (!in_array($studentKey, $readers, true)) {
+            $readers[] = $studentKey;
+            $notice->update(['read_by_student_ids' => $readers]);
+        }
+        return response()->json($notice);
+    }
+
+    public function markAllNoticesRead(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::where('user_id', $request->user()->id)->first();
+        $studentKey = $profile ? (string)$profile->id : (string)$request->user()->id;
+        Notice::whereIn('target_portal', ['all', 'student'])->get()->each(function ($notice) use ($studentKey) {
+            $readers = $notice->read_by_student_ids ?? [];
+            if (!in_array($studentKey, $readers, true)) {
+                $readers[] = $studentKey;
+                $notice->update(['read_by_student_ids' => $readers]);
+            }
+        });
+        return response()->json(['ok' => true]);
+    }
+
+    public function myCorrections(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        return response()->json($profile->corrections()->latest()->get());
+    }
+
+    public function updateSkills(Request $request): JsonResponse
+    {
+        $data = $request->validate(['skills' => ['required', 'array']]);
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $profile->update(['skills' => $data['skills']]);
+        AuditService::log('UPDATED_SKILLS', 'StudentProfile', (string)$profile->id, 'Updated skills & projects', null, $request);
+        return response()->json($profile->skills);
+    }
+
+    public function interviews(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $rows = Interview::with('company:id,name,logo_url')
+            ->where('student_profile_id', $profile->id)
+            ->orderBy('scheduled_date')
+            ->get()
+            ->map(fn ($i) => [
+                'id' => (string)$i->id,
+                'studentId' => (string)$i->student_profile_id,
+                'companyId' => (string)$i->company_id,
+                'companyName' => $i->company?->name ?? 'Company',
+                'companyLogo' => $i->company?->logo_url ?? "https://ui-avatars.com/api/?name=" . urlencode($i->company?->name ?? 'C') . "&background=142B4A&color=fff",
+                'roleTitle' => $i->role_title,
+                'roundName' => $i->round_name,
+                'scheduledDate' => $i->scheduled_date->format('Y-m-d'),
+                'scheduledTime' => $i->scheduled_time,
+                'venueOrLink' => $i->venue_or_link,
+                'isOnline' => $i->is_online,
+                'instructions' => $i->instructions ?? '',
+                'status' => $i->status,
+                'academicYear' => $i->academic_year,
+            ]);
+        return response()->json($rows);
+    }
+
+    public function calendarEvents(): JsonResponse
+    {
+        $rows = CalendarEvent::orderBy('date')->get()->map(fn ($e) => [
+            'id' => (string)$e->id,
+            'title' => $e->title,
+            'date' => $e->date->format('Y-m-d'),
+            'time' => $e->time,
+            'type' => $e->type,
+            'companyName' => $e->company_name,
+            'venueOrLink' => $e->venue_or_link,
+            'status' => $e->status,
+            'actionUrl' => $e->action_url,
+            'actionLabel' => $e->action_label,
+            'academicYear' => $e->academic_year,
+        ]);
+        return response()->json($rows);
+    }
+
+    public function addCalendarEvent(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'date' => ['required', 'date'],
+            'time' => ['nullable', 'string', 'max:40'],
+            'type' => ['nullable', 'string', 'max:50'],
+            'companyName' => ['nullable', 'string', 'max:150'],
+            'venueOrLink' => ['nullable', 'string', 'max:255'],
+        ]);
+        $ev = CalendarEvent::create([
+            'title' => $data['title'],
+            'date' => $data['date'],
+            'time' => $data['time'] ?? null,
+            'type' => $data['type'] ?? 'cdc_event',
+            'company_name' => $data['companyName'] ?? null,
+            'venue_or_link' => $data['venueOrLink'] ?? null,
+            'created_by' => $request->user()->id,
+        ]);
+        return response()->json($ev, 201);
+    }
+
+    public function parentAlerts(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $rows = ParentAlert::where('student_profile_id', $profile->id)
+            ->orderBy('scheduled_date')
+            ->get()
+            ->map(fn ($a) => [
+                'id' => (string)$a->id,
+                'studentId' => (string)$a->student_profile_id,
+                'companyId' => (string)($a->company_id ?? ''),
+                'companyName' => $a->company_name,
+                'applicationDeadline' => $a->application_deadline->format('Y-m-d'),
+                'alertType' => $a->alert_type,
+                'recipientMaskedPhone' => $a->recipient_masked_phone,
+                'channel' => $a->channel,
+                'scheduledDate' => $a->scheduled_date->format('Y-m-d'),
+                'sentDate' => $a->sent_date?->toIso8601String(),
+                'deliveryStatus' => $a->delivery_status,
+                'sampleMessage' => $a->sample_message,
+                'academicYear' => $a->academic_year,
+            ]);
+        return response()->json($rows);
+    }
+
+    public function updateParentContact(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:120'],
+            'relationship' => ['sometimes', 'in:Father,Mother,Guardian'],
+            'phone' => ['sometimes', 'string', 'max:30'],
+            'email' => ['nullable', 'email'],
+            'preferredChannel' => ['sometimes', 'in:WhatsApp,SMS,Email'],
+            'consentGiven' => ['sometimes', 'boolean'],
+        ]);
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $current = $profile->parent_contact ?? [];
+        $phoneChanged = isset($data['phone']) && $data['phone'] !== ($current['phone'] ?? '');
+        $updated = array_merge($current, $data, $phoneChanged ? ['isVerified' => false] : []);
+        $profile->update(['parent_contact' => $updated]);
+        AuditService::log('UPDATED_PARENT_CONTACT', 'StudentProfile', (string)$profile->id, 'Updated guardian contact', null, $request);
+        return response()->json($updated);
+    }
+
+    public function verifyParentOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate(['otp' => ['required', 'string', 'size:6']]);
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        $contact = array_merge($profile->parent_contact ?? [], [
+            'isVerified' => true,
+            'lastVerifiedAt' => now()->toIso8601String(),
+        ]);
+        $profile->update(['parent_contact' => $contact]);
+        AuditService::log('VERIFIED_PARENT_OTP', 'StudentProfile', (string)$profile->id, 'Verified guardian phone via OTP', null, $request);
+        return response()->json(['success' => true, 'message' => 'Parent contact successfully verified via OTP.', 'parentContact' => $contact]);
     }
 }

@@ -25,7 +25,21 @@ export const studentService = {
   },
 
   async getAcademicCorrections(): Promise<AcademicCorrectionRequest[]> {
-    return Promise.resolve([]);
+    const rows = await apiRequest<any[]>('/students/me/academic-correction', { portal: 'student' });
+    return rows.map(r => ({
+      id: String(r.id),
+      studentId: String(r.student_profile_id),
+      field: r.field,
+      currentValue: r.current_value,
+      requestedValue: r.requested_value,
+      reason: r.reason,
+      supportingDocName: r.supporting_doc_name,
+      status: r.status,
+      submittedAt: r.created_at,
+      reviewedBy: r.reviewed_by,
+      reviewedAt: r.reviewed_at,
+      remarks: r.remarks,
+    }));
   },
 };
 
@@ -36,6 +50,10 @@ export const profileService = {
   },
 
   async updateSkills(skills: Student['skills']): Promise<Student['skills']> {
-    return skills;
+    return apiRequest<Student['skills']>('/students/me/skills', {
+      method: 'PATCH',
+      portal: 'student',
+      body: JSON.stringify({ skills }),
+    });
   },
 };

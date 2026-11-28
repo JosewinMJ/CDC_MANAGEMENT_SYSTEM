@@ -1,6 +1,5 @@
 import { apiRequest } from './apiClient';
-import { db } from './storage';
-import { Document, DocumentVerificationStatus, UserRole } from '../shared/types';
+import { Document, DocumentVerificationStatus } from '../shared/types';
 
 export const documentService = {
   async getDocuments(): Promise<Document[]> {
@@ -27,41 +26,15 @@ export const documentService = {
     return apiRequest('/students/me/documents/' + id, { portal: 'student', method: 'DELETE' });
   },
 
-  // Mock function for Guide/Admin simulator
-  async verifyDocumentMock(docId: string, status: DocumentVerificationStatus, remarks?: string, reviewerName = 'Dr. K. Ramanathan'): Promise<Document | null> {
-    const student = db.getStudent();
-    const docIndex = student.documents.findIndex(d => d.id === docId);
-    if (docIndex === -1) return null;
-
-    const doc = student.documents[docIndex];
-    const updatedDoc: Document = {
-      ...doc,
-      verificationStatus: status,
-      verifiedBy: reviewerName,
-      verifiedDate: new Date().toISOString(),
-      rejectionReason: status === DocumentVerificationStatus.REJECTED ? (remarks || 'Document illegible or invalid') : undefined,
-    };
-
-    student.documents[docIndex] = updatedDoc;
-    db.setStudent(student);
-
-    // Audit log
-    const auditLogs = db.getAuditLog();
-    auditLogs.unshift({
-      id: `audit-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      actorUserId: 'guide-201',
-      actorName: reviewerName,
-      actorRole: UserRole.GUIDE,
-      action: status === DocumentVerificationStatus.VERIFIED ? 'VERIFIED_DOCUMENT' : 'REJECTED_DOCUMENT',
-      entityType: 'Document',
-      entityId: docId,
-      details: `${status} document: ${doc.name}`,
-      remarks,
-      academicYear: student.academicYear,
+  async verifyDocumentMock(
+    docId: string,
+    status: DocumentVerificationStatus,
+    remarks?: string
+  ): Promise<Document | null> {
+    return apiRequest<Document>(`/documents/${docId}/verification`, {
+      method: 'PATCH',
+      portal: 'guide',
+      body: JSON.stringify({ status, remarks }),
     });
-    db.setAuditLog(auditLogs);
-
-    return Promise.resolve(updatedDoc);
   },
 };

@@ -5,12 +5,15 @@ namespace Database\Seeders;
 use App\Models\AcademicCorrection;
 use App\Models\Application;
 use App\Models\AuditLog;
+use App\Models\CalendarEvent;
 use App\Models\CodingQuestion;
 use App\Models\Company;
 use App\Models\FacultyProfile;
 use App\Models\Internship;
+use App\Models\Interview;
 use App\Models\JobRole;
 use App\Models\Notice;
+use App\Models\ParentAlert;
 use App\Models\StudentCodingSolve;
 use App\Models\StudentDocument;
 use App\Models\StudentProfile;
@@ -411,6 +414,53 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
         }
+
+        // 10. Interviews, Calendar Events, and Parent Alerts (Unified MySQL)
+        Interview::create([
+            'student_profile_id' => $snehaProfile->id,
+            'company_id' => $infosys->id,
+            'role_title' => 'Specialist Programmer (SP)',
+            'round_name' => 'Technical Interview Round 1',
+            'scheduled_date' => now()->addDays(6)->toDateString(),
+            'scheduled_time' => '10:30 AM IST',
+            'venue_or_link' => 'Placement Block Room 204 / Virtual Meet',
+            'is_online' => false,
+            'instructions' => 'Bring 2 copies of your updated resume and college ID card.',
+            'status' => 'Scheduled',
+        ]);
+
+        CalendarEvent::create([
+            'title' => 'Razorpay SDE-1 Application Deadline',
+            'date' => now()->addDays(18)->toDateString(),
+            'time' => '11:59 PM',
+            'type' => 'deadline',
+            'company_name' => 'Razorpay',
+            'action_url' => '/student/companies',
+            'action_label' => 'View Drive',
+        ]);
+        CalendarEvent::create([
+            'title' => 'Infosys SP Technical Interview',
+            'date' => now()->addDays(6)->toDateString(),
+            'time' => '10:30 AM',
+            'type' => 'interview',
+            'company_name' => 'Infosys Limited',
+            'venue_or_link' => 'Placement Block Room 204',
+            'action_url' => '/student/interviews',
+            'action_label' => 'View Schedule',
+        ]);
+
+        ParentAlert::create([
+            'student_profile_id' => $snehaProfile->id,
+            'company_id' => $razorpay->id,
+            'company_name' => 'Razorpay',
+            'application_deadline' => now()->addDays(18)->toDateString(),
+            'alert_type' => 'Reminder 1 (3 days before)',
+            'recipient_masked_phone' => '+91 98400 ***45',
+            'channel' => 'WhatsApp',
+            'scheduled_date' => now()->addDays(15)->toDateString(),
+            'delivery_status' => 'SCHEDULED',
+            'sample_message' => 'CDC Alert: Your ward Sneha R is eligible for Razorpay (21.0 LPA). Please remind them to apply before the deadline.',
+        ]);
 
         AuditLog::create([
             'actor_user_id' => $adminSuper->id,

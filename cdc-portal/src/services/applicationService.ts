@@ -1,6 +1,5 @@
 import { apiRequest } from './apiClient';
 import { Application, ApplicationStatus, Interview } from '../shared/types';
-import { db } from './storage';
 
 function mapApplication(a: any): Application {
   const companyName = a.company?.name || a.companyName || 'Company';
@@ -57,11 +56,11 @@ export const applicationService = {
 
 export const interviewService = {
   async getInterviews(): Promise<Interview[]> {
-    return Promise.resolve(db.getInterviews());
+    return apiRequest<Interview[]>('/interviews', { portal: 'student' });
   },
 
   async getUpcomingInterviews(): Promise<Interview[]> {
-    const interviews = db.getInterviews();
-    return Promise.resolve(interviews.filter(i => i.status === 'Scheduled'));
+    const interviews = await this.getInterviews();
+    return interviews.filter(i => i.status === 'Scheduled');
   },
 };

@@ -1,6 +1,5 @@
 import { apiRequest } from './apiClient';
 import { Notice, NoticeCategory, NoticePriority, CalendarEvent } from '../shared/types';
-import { db } from './storage';
 
 function mapNotice(n: any): Notice {
   return {
@@ -27,11 +26,15 @@ export const noticeService = {
   },
 
   async markAsRead(noticeId: string): Promise<Notice | null> {
-    const list = await this.getNotices();
-    return list.find(n => n.id === noticeId) ?? null;
+    const raw = await apiRequest<any>(`/notices/${noticeId}/read`, {
+      method: 'POST',
+      portal: 'student',
+    });
+    return mapNotice(raw);
   },
 
   async markAllAsRead(): Promise<boolean> {
+    await apiRequest('/notices/read-all', { method: 'POST', portal: 'student' });
     return true;
   },
 
@@ -61,18 +64,14 @@ export const noticeService = {
 
 export const calendarService = {
   async getEvents(): Promise<CalendarEvent[]> {
-    return Promise.resolve(db.getCalendarEvents());
+    return apiRequest<CalendarEvent[]>('/calendar/events', { portal: 'student' });
   },
 
   async addEvent(event: Omit<CalendarEvent, 'id' | 'academicYear'>): Promise<CalendarEvent> {
-    const events = db.getCalendarEvents();
-    const newEvent: CalendarEvent = {
-      ...event,
-      id: `cal-${Date.now()}`,
-      academicYear: '2026-2027',
-    };
-    events.push(newEvent);
-    db.setCalendarEvents(events);
-    return Promise.resolve(newEvent);
+    return apiRequest<CalendarEvent>('/calendar/events', {
+      method: 'POST',
+      portal: 'student',
+      body: JSON.stringify(event),
+    });
   },
 };

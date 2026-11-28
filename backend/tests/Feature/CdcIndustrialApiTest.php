@@ -245,4 +245,20 @@ class CdcIndustrialApiTest extends TestCase
             ])
             ->assertOk();
     }
+
+    public function test_unified_mysql_interviews_calendar_parent_alerts_and_skills(): void
+    {
+        $studentToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+        ])->assertOk()->json('token');
+
+        auth()->forgetGuards();
+        $this->withToken($studentToken)->getJson('/api/v1/interviews')->assertOk()->assertJsonCount(1);
+        $this->withToken($studentToken)->getJson('/api/v1/calendar/events')->assertOk()->assertJsonCount(2);
+        $this->withToken($studentToken)->getJson('/api/v1/parent-alerts')->assertOk()->assertJsonCount(1);
+        $this->withToken($studentToken)->postJson('/api/v1/parent-alerts/verify-otp', ['otp' => '123456'])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
 }

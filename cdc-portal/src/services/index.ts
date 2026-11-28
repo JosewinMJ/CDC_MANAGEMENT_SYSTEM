@@ -10,4 +10,3 @@ export * from './noticeService';
 export * from './calendarService';
 export * from './parentAlertService';
 export * from './codingChallengeService';
-export * from './storage';

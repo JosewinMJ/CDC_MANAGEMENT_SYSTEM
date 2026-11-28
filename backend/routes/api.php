@@ -24,6 +24,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/companies', [StudentPortalController::class, 'companies']);
         Route::get('/companies/{id}', [StudentPortalController::class, 'companyDetail']);
         Route::get('/notices', [StudentPortalController::class, 'notices']);
+        Route::post('/notices/{id}/read', [StudentPortalController::class, 'markNoticeRead']);
+        Route::post('/notices/read-all', [StudentPortalController::class, 'markAllNoticesRead']);
+        Route::get('/calendar/events', [StudentPortalController::class, 'calendarEvents']);
+        Route::post('/calendar/events', [StudentPortalController::class, 'addCalendarEvent']);
 
         // Student Portal Scope
         Route::middleware('role:STUDENT,ADMIN')->group(function () {
@@ -33,7 +37,13 @@ Route::prefix('v1')->group(function () {
             Route::post('/internships/{id}/resubmit', [StudentPortalController::class, 'resubmit']);
             Route::get('/students/me', [StudentPortalController::class, 'me']);
             Route::patch('/students/me/personal', [StudentPortalController::class, 'updatePersonal']);
+            Route::patch('/students/me/skills', [StudentPortalController::class, 'updateSkills']);
+            Route::patch('/students/me/parent-contact', [StudentPortalController::class, 'updateParentContact']);
+            Route::get('/students/me/academic-correction', [StudentPortalController::class, 'myCorrections']);
             Route::post('/students/me/academic-correction', [StudentPortalController::class, 'requestCorrection']);
+            Route::get('/interviews', [StudentPortalController::class, 'interviews']);
+            Route::get('/parent-alerts', [StudentPortalController::class, 'parentAlerts']);
+            Route::post('/parent-alerts/verify-otp', [StudentPortalController::class, 'verifyParentOtp']);
             Route::post('/eligibility/evaluate', [StudentPortalController::class, 'evaluateEligibility']);
             Route::get('/applications/my-applications', [StudentPortalController::class, 'myApplications']);
             Route::post('/applications', [StudentPortalController::class, 'apply']);
