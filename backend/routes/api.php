@@ -19,6 +19,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
+        Route::post('/auth/change-pattern', [AuthController::class, 'changePattern']);
 
         Route::middleware('role:STUDENT,GUIDE,ADMIN')->get('/documents/{document}/file', [StudentDocumentController::class, 'download']);
 

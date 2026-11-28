@@ -17,6 +17,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'pattern' => ['required', 'string', 'regex:/^[0-8](-[0-8]){3,8}$/'],
         ]);
 
         $throttleKey = 'login:' . strtolower($data['email']) . '|' . $request->ip();
@@ -28,20 +29,31 @@ class AuthController extends Controller
         }
 
         $user = User::where('email', $data['email'])->first();
-        if (!$user || !$user->is_active || !Hash::check($data['password'], $user->password)) {
+        $patternValid = $user && $user->pattern_hash && Hash::check($data['pattern'], $user->pattern_hash);
+        if (!$user || !$user->is_active || !Hash::check($data['password'], $user->password) || !$patternValid) {
             RateLimiter::hit($throttleKey, 900);
-            AuditService::log('LOGIN_FAILED', 'Auth', $data['email'], 'Invalid credentials', null, $request);
-            return response()->json(['message' => 'Invalid credentials or inactive account.'], 401);
+            AuditService::log('LOGIN_FAILED', 'Auth', $data['email'], 'Invalid credentials or pattern lock', null, $request);
+            return response()->json(['message' => 'Invalid credentials, pattern lock, or inactive account.'], 401);
+        }
+
+        if (!$user->emailMatchesRolePattern()) {
+            RateLimiter::hit($throttleKey, 900);
+            AuditService::log('LOGIN_PATTERN_MISMATCH', 'Auth', $data['email'], 'Email domain pattern does not match assigned portal role', null, $request);
+            return response()->json(['message' => 'Email pattern does not match assigned portal role.'], 403);
         }
 
         RateLimiter::clear($throttleKey);
         $user->update(['last_login_at' => now()]);
         $token = $user->createToken('cdc-portal-' . strtolower($user->role))->plainTextToken;
+        $resolvedPortal = $user->resolvePortalScope();
+        $redirectTo = '/' . $resolvedPortal;
 
-        AuditService::log('USER_LOGIN', 'Auth', (string)$user->id, "Authenticated as {$user->role}", null, $request);
+        AuditService::log('USER_LOGIN', 'Auth', (string)$user->id, "Authenticated as {$user->role} -> {$redirectTo}", null, $request);
 
         return response()->json([
             'token' => $token,
+            'resolvedPortal' => $resolvedPortal,
+            'redirectTo' => $redirectTo,
             'user' => [
                 'id' => (string)$user->id,
                 'name' => $user->name,
@@ -65,6 +77,7 @@ class AuthController extends Controller
             'department' => $user->department,
             'avatarUrl' => $user->avatar_url,
             'mustChangePassword' => $user->must_change_password,
+            'resolvedPortal' => $user->resolvePortalScope(),
         ]);
     }
 
@@ -95,5 +108,30 @@ class AuthController extends Controller
 
         AuditService::log('PASSWORD_CHANGED', 'Auth', (string)$user->id, 'Updated account password', null, $request);
         return response()->json(['message' => 'Password updated successfully.']);
+    }
+
+    public function changePattern(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_pattern' => ['required', 'string', 'regex:/^[0-8](-[0-8]){3,8}$/'],
+        ]);
+
+        $nodes = explode('-', $data['new_pattern']);
+        if (count($nodes) !== count(array_unique($nodes))) {
+            return response()->json(['message' => 'Pattern lock cannot reuse the same dot twice.'], 422);
+        }
+
+        $user = $request->user();
+        if (!Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['message' => 'Current password is incorrect.'], 422);
+        }
+
+        $user->update([
+            'pattern_hash' => Hash::make($data['new_pattern']),
+        ]);
+
+        AuditService::log('PATTERN_CHANGED', 'Auth', (string)$user->id, 'Updated 3x3 login pattern lock', null, $request);
+        return response()->json(['message' => 'Login pattern updated successfully.']);
     }
 }

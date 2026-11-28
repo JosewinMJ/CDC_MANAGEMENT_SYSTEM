@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { AppShell } from './components/layout/AppShell';
 import { RequirePortalAuth } from './components/auth/RequirePortalAuth';
+import { ChangePatternCard } from './components/auth/ChangePatternCard';
 import { PortalLoginPage } from './features/auth/PortalLoginPage';
 
 // Features
@@ -42,10 +43,11 @@ export const App: React.FC = () => {
       <AuthProvider>
         <NotificationProvider>
           <Routes>
-            {/* Dedicated Role-Locked Login Screens */}
-            <Route path="/student/login" element={<PortalLoginPage portal="student" />} />
-            <Route path="/guide/login" element={<PortalLoginPage portal="guide" />} />
-            <Route path="/admin/login" element={<PortalLoginPage portal="admin" />} />
+            {/* Unified Pattern-Lock Login Screen */}
+            <Route path="/login" element={<PortalLoginPage />} />
+            <Route path="/student/login" element={<Navigate to="/login" replace />} />
+            <Route path="/guide/login" element={<Navigate to="/login" replace />} />
+            <Route path="/admin/login" element={<Navigate to="/login" replace />} />
 
             {/* Protected Student Portal */}
             <Route
@@ -108,11 +110,14 @@ export const App: React.FC = () => {
               <Route
                 path="settings"
                 element={
-                  <div className="bg-white rounded-2xl border border-slate-200 p-8 max-w-3xl mx-auto space-y-4">
-                    <h1 className="text-xl font-bold text-[#142B4A]">Account & Notification Settings</h1>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Notification preferences for WhatsApp, SMS, and Email are active. Parent alert contact can be adjusted in Profile → Personal Information.
-                    </p>
+                  <div className="max-w-3xl mx-auto space-y-6">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-2">
+                      <h1 className="text-xl font-bold text-[#142B4A]">Account & Security Settings</h1>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Notification preferences for WhatsApp, SMS, and Email are active. Parent alert contact can be adjusted in Profile → Personal Information.
+                      </p>
+                    </div>
+                    <ChangePatternCard portal="student" />
                   </div>
                 }
               />
@@ -139,8 +144,8 @@ export const App: React.FC = () => {
             />
 
             {/* Root & Catch-all Redirects */}
-            <Route path="/" element={<Navigate to="/student/login" replace />} />
-            <Route path="*" element={<Navigate to="/student/login" replace />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </NotificationProvider>
       </AuthProvider>

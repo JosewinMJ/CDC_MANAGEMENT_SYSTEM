@@ -27,16 +27,19 @@ class CdcIndustrialApiTest extends TestCase
         $studentToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'sneha.r2023@vitstudent.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
 
         $guideToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'k.ramanathan@vit.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-3-6-7-8',
         ])->assertOk()->json('token');
 
         $adminToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'cdc.admin@vit.ac.in',
             'password' => 'Admin@1234',
+            'pattern' => '0-4-8-5-2',
         ])->assertOk()->json('token');
 
         // Student & Guide cannot access Admin Master Student DB
@@ -61,6 +64,7 @@ class CdcIndustrialApiTest extends TestCase
         $studentToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'sneha.r2023@vitstudent.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
         ])->json('token');
 
         $role = JobRole::where('role_code', 'role-infy-sp')->firstOrFail();
@@ -72,6 +76,7 @@ class CdcIndustrialApiTest extends TestCase
         $guideToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'k.ramanathan@vit.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-3-6-7-8',
         ])->json('token');
 
         auth()->forgetGuards();
@@ -88,6 +93,7 @@ class CdcIndustrialApiTest extends TestCase
         $adminToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'cdc.admin@vit.ac.in',
             'password' => 'Admin@1234',
+            'pattern' => '0-4-8-5-2',
         ])->json('token');
 
         auth()->forgetGuards();
@@ -205,6 +211,7 @@ class CdcIndustrialApiTest extends TestCase
         $adminToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'cdc.admin@vit.ac.in',
             'password' => 'Admin@1234',
+            'pattern' => '0-4-8-5-2',
         ])->assertOk()->json('token');
 
         auth()->forgetGuards();
@@ -222,6 +229,7 @@ class CdcIndustrialApiTest extends TestCase
         $studentToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'sneha.r2023@vitstudent.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
 
         auth()->forgetGuards();
@@ -251,6 +259,7 @@ class CdcIndustrialApiTest extends TestCase
         $studentToken = $this->postJson('/api/v1/auth/login', [
             'email' => 'sneha.r2023@vitstudent.ac.in',
             'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
 
         auth()->forgetGuards();
@@ -347,5 +356,71 @@ class CdcIndustrialApiTest extends TestCase
         $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/chat", ['message' => 'You are shortlisted for Infosys SP.'])
             ->assertCreated()
             ->assertJsonPath('sender_role', 'GUIDE');
+    }
+
+    public function test_unified_pattern_lock_login_routing_and_change_pattern(): void
+    {
+        // 1. Missing or invalid pattern fails cleanly
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+        ])->assertStatus(422);
+
+        // 2. Wrong pattern (Admin pattern for Student account) is rejected
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+            'pattern' => '0-4-8-5-2',
+        ])->assertStatus(401);
+
+        // 3. Matching pattern auto-resolves portal and redirect target
+        $studentRes = $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
+        ])->assertOk()
+            ->assertJsonPath('resolvedPortal', 'student')
+            ->assertJsonPath('redirectTo', '/student');
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'k.ramanathan@vit.ac.in',
+            'password' => 'Portal@1234',
+            'pattern' => '0-3-6-7-8',
+        ])->assertOk()
+            ->assertJsonPath('resolvedPortal', 'guide')
+            ->assertJsonPath('redirectTo', '/guide');
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'cdc.admin@vit.ac.in',
+            'password' => 'Admin@1234',
+            'pattern' => '0-4-8-5-2',
+        ])->assertOk()
+            ->assertJsonPath('resolvedPortal', 'admin')
+            ->assertJsonPath('redirectTo', '/admin');
+
+        // 4. Duplicate dots rejected when updating pattern; valid new pattern works immediately
+        $token = $studentRes->json('token');
+        $this->withToken($token)->postJson('/api/v1/auth/change-pattern', [
+            'current_password' => 'Portal@1234',
+            'new_pattern' => '0-1-0-2',
+        ])->assertStatus(422);
+
+        $this->withToken($token)->postJson('/api/v1/auth/change-pattern', [
+            'current_password' => 'Portal@1234',
+            'new_pattern' => '6-4-2-5-8',
+        ])->assertOk();
+
+        // Old default pattern no longer unlocks Sneha, new pattern does
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+            'pattern' => '0-1-2-5-8',
+        ])->assertStatus(401);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'password' => 'Portal@1234',
+            'pattern' => '6-4-2-5-8',
+        ])->assertOk()->assertJsonPath('resolvedPortal', 'student');
     }
 }

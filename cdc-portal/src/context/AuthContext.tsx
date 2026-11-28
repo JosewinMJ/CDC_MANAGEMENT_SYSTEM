@@ -12,12 +12,18 @@ export interface AuthenticatedUser extends User {
   mustChangePassword?: boolean;
 }
 
+export interface UnifiedLoginResult {
+  user: AuthenticatedUser;
+  resolvedPortal: PortalScope;
+  redirectTo: string;
+}
+
 interface AuthContextType {
   currentUser: AuthenticatedUser;
   currentRole: UserRole;
   getPortalUser: (scope: PortalScope) => AuthenticatedUser | null;
   isPortalAuthenticated: (scope: PortalScope) => boolean;
-  loginToPortal: (scope: PortalScope, email: string, password: string) => Promise<AuthenticatedUser>;
+  loginUnified: (email: string, password: string, pattern: string) => Promise<UnifiedLoginResult>;
   logoutFromPortal: (scope?: PortalScope) => Promise<void>;
   clearMustChangePassword: (scope: PortalScope) => void;
   isStudent: boolean;
@@ -101,34 +107,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Boolean(token && user && roleMatchesPortal(user.role, scope));
   };
 
-  const loginToPortal = async (
-    scope: PortalScope,
+  const loginUnified = async (
     email: string,
-    password: string
-  ): Promise<AuthenticatedUser> => {
-    const res = await apiRequest<{ token: string; user: AuthenticatedUser }>('/auth/login', {
+    password: string,
+    pattern: string
+  ): Promise<UnifiedLoginResult> => {
+    const res = await apiRequest<{
+      token: string;
+      resolvedPortal: PortalScope;
+      redirectTo: string;
+      user: AuthenticatedUser;
+    }>('/auth/login', {
       method: 'POST',
-      portal: scope,
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, pattern }),
     });
 
-    if (!roleMatchesPortal(res.user.role, scope)) {
-      // Revoke issued token if user tried signing into the wrong portal
-      await fetch('/api/v1/auth/logout', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${res.token}`,
-        },
-      }).catch(() => {});
-      const label = scope === 'admin' ? 'CDC Admin' : scope === 'guide' ? 'Faculty Guide' : 'Student';
-      throw new Error(`Access denied: This login screen is restricted to ${label} accounts.`);
-    }
+    const scope: PortalScope = res.resolvedPortal
+      ?? (String(res.user.role).startsWith('ADMIN') ? 'admin' : res.user.role === UserRole.GUIDE ? 'guide' : 'student');
+    const redirectTo = res.redirectTo || `/${scope}/dashboard`;
 
     setAuthToken(res.token, scope);
     localStorage.setItem(USER_KEYS[scope], JSON.stringify(res.user));
     bump();
-    return res.user;
+    return {
+      user: res.user,
+      resolvedPortal: scope,
+      redirectTo: redirectTo === `/${scope}` ? `/${scope}/dashboard` : redirectTo,
+    };
   };
 
   const logoutFromPortal = async (scope?: PortalScope): Promise<void> => {
@@ -162,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentRole,
         getPortalUser,
         isPortalAuthenticated,
-        loginToPortal,
+        loginUnified,
         logoutFromPortal,
         clearMustChangePassword,
         isStudent: currentRole === UserRole.STUDENT,

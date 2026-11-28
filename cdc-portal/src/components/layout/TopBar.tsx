@@ -81,7 +81,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
 
   const handleLogout = async () => {
     await logoutFromPortal('student');
-    navigate('/student/login', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   return (

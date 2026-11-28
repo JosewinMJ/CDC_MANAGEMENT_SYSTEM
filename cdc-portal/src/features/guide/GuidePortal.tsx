@@ -66,7 +66,7 @@ export function GuidePortal() {
   async function signOut() {
     setSigningOut(true);
     await logoutFromPortal('guide');
-    navigate('/guide/login', { replace: true });
+    navigate('/login', { replace: true });
   }
 
   function updateReview(updated: InternshipSubmission) {

@@ -18,7 +18,7 @@ export const RequirePortalAuth: React.FC<RequirePortalAuthProps> = ({ portal, ch
   const [saving, setSaving] = useState(false);
 
   if (!isPortalAuthenticated(portal)) {
-    return <Navigate to={`/${portal}/login`} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   const user = getPortalUser(portal);

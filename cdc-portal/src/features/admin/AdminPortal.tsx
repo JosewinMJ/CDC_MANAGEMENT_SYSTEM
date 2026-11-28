@@ -132,7 +132,7 @@ export const AdminPortal: React.FC = () => {
 
   const handleLogout = async () => {
     await logoutFromPortal('admin');
-    navigate('/admin/login', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   const handleCreateStudent = async (e: React.FormEvent) => {
