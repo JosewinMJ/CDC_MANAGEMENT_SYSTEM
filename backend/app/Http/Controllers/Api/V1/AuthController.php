@@ -77,7 +77,7 @@ class AuthController extends Controller
         ]);
 
         $emailMap = [
-            'student' => 'sneha.r2023@vitstudent.ac.in',
+            'student' => 'user@vitstudent.ac.in',
             'guide' => 'k.ramanathan@vit.ac.in',
             'admin' => 'cdc.admin@vit.ac.in',
         ];

@@ -25,7 +25,7 @@ class CdcIndustrialApiTest extends TestCase
     public function test_rbac_blocks_student_and_guide_from_admin_master_edits(): void
     {
         $studentToken = $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
@@ -62,7 +62,7 @@ class CdcIndustrialApiTest extends TestCase
     public function test_student_eligibility_and_guide_internship_workflow_and_admin_export(): void
     {
         $studentToken = $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->json('token');
@@ -165,7 +165,7 @@ class CdcIndustrialApiTest extends TestCase
     public function test_uploaded_evidence_and_revision_cross_all_three_portals(): void
     {
         \Illuminate\Support\Facades\Storage::fake('local');
-        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $student = User::where('email', 'user@vitstudent.ac.in')->firstOrFail();
         $guide = User::findOrFail($student->studentProfile->assigned_guide_id);
         $admin = User::where('email', 'cdc.admin@vit.ac.in')->firstOrFail();
         $pdf = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('offer.pdf', "%PDF-1.4\nTest evidence");
@@ -227,7 +227,7 @@ class CdcIndustrialApiTest extends TestCase
             ->json();
 
         $studentToken = $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
@@ -242,14 +242,14 @@ class CdcIndustrialApiTest extends TestCase
         $this->withToken($studentToken)
             ->getJson('/api/v1/coding-challenge/profile')
             ->assertOk()
-            ->assertJsonPath('username', 'sneha_dev');
+            ->assertJsonPath('username', 'user_dev');
 
         auth()->forgetGuards();
         $this->withToken($studentToken)
             ->postJson('/api/v1/auth/change-password', [
                 'current_password' => 'Portal@1234',
-                'new_password' => 'SnehaNew@2027',
-                'new_password_confirmation' => 'SnehaNew@2027',
+                'new_password' => 'UserNew@2027',
+                'new_password_confirmation' => 'UserNew@2027',
             ])
             ->assertOk();
     }
@@ -257,7 +257,7 @@ class CdcIndustrialApiTest extends TestCase
     public function test_unified_mysql_interviews_calendar_parent_alerts_and_skills(): void
     {
         $studentToken = $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->assertOk()->json('token');
@@ -274,7 +274,7 @@ class CdcIndustrialApiTest extends TestCase
     public function test_pdf_gap_features_completion_upload_guide_remarks_and_admin_governance(): void
     {
         \Illuminate\Support\Facades\Storage::fake('local');
-        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $student = User::where('email', 'user@vitstudent.ac.in')->firstOrFail();
         $guide = User::where('email', 'k.ramanathan@vit.ac.in')->firstOrFail();
         $admin = User::where('email', 'cdc.admin@vit.ac.in')->firstOrFail();
 
@@ -329,7 +329,7 @@ class CdcIndustrialApiTest extends TestCase
 
     public function test_mentor_student_two_way_chat_and_portal_isolation(): void
     {
-        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $student = User::where('email', 'user@vitstudent.ac.in')->firstOrFail();
         $guide = User::where('email', 'k.ramanathan@vit.ac.in')->firstOrFail();
         $otherGuide = User::where('email', 'kavita.nair@cdc.edu')->firstOrFail();
 
@@ -382,20 +382,20 @@ class CdcIndustrialApiTest extends TestCase
     {
         // 1. Missing or invalid pattern fails cleanly
         $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
         ])->assertStatus(422);
 
         // 2. Wrong pattern (Admin pattern for Student account) is rejected
         $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-4-8-5-2',
         ])->assertStatus(401);
 
         // 3. Matching pattern auto-resolves portal and redirect target
         $studentRes = $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->assertOk()
@@ -430,15 +430,15 @@ class CdcIndustrialApiTest extends TestCase
             'new_pattern' => '6-4-2-5-8',
         ])->assertOk();
 
-        // Old default pattern no longer unlocks Sneha, new pattern does
+        // Old default pattern no longer unlocks User, new pattern does
         $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '0-1-2-5-8',
         ])->assertStatus(401);
 
         $this->postJson('/api/v1/auth/login', [
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'email' => 'user@vitstudent.ac.in',
             'password' => 'Portal@1234',
             'pattern' => '6-4-2-5-8',
         ])->assertOk()->assertJsonPath('resolvedPortal', 'student');

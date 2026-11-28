@@ -84,10 +84,10 @@ class DatabaseSeeder extends Seeder
             'portal_active' => true,
         ]);
 
-        // 3. Students (starting with Sneha R from Student Portal)
+        // 3. Students (primary Student Portal account)
         $snehaUser = User::create([
-            'name' => 'Sneha R',
-            'email' => 'sneha.r2023@vitstudent.ac.in',
+            'name' => 'User',
+            'email' => 'user@vitstudent.ac.in',
             'password' => $portalPass,
             'role' => 'STUDENT',
             'phone' => '+91 94451 98765',
@@ -141,7 +141,7 @@ class DatabaseSeeder extends Seeder
                 'preferredChannel' => 'WhatsApp',
                 'consentGiven' => true,
             ],
-            'leetcode_username' => 'sneha_dev',
+            'leetcode_username' => 'user_dev',
             'coding_stats' => [
                 'totalSolved' => 148,
                 'easySolved' => 74,
@@ -216,9 +216,9 @@ class DatabaseSeeder extends Seeder
         // 4. Student Documents & Academic Correction Ticket
         StudentDocument::create([
             'student_profile_id' => $snehaProfile->id,
-            'name' => 'Sneha_R_Resume_2026.pdf',
+            'name' => 'User_Resume_2026.pdf',
             'category' => 'Resume',
-            'file_url' => '/uploads/Sneha_R_Resume_2026.pdf',
+            'file_url' => '/uploads/User_Resume_2026.pdf',
             'file_size' => '640 KB',
             'verification_status' => 'VERIFIED',
             'verified_by' => 'Dr. K. Ramanathan',
@@ -390,7 +390,7 @@ class DatabaseSeeder extends Seeder
             'faculty_guide_id' => $guide1->id,
             'status' => 'PENDING_GUIDE_REVIEW',
             'steps' => [
-                ['stepNumber' => 1, 'stepName' => 'Student Submission', 'assignedRole' => 'STUDENT', 'decision' => 'SUBMITTED', 'responsibleUserName' => 'Sneha R', 'decisionDate' => now()->subDays(2)->toIso8601String(), 'remarks' => 'Submitted offer letter'],
+                ['stepNumber' => 1, 'stepName' => 'Student Submission', 'assignedRole' => 'STUDENT', 'decision' => 'SUBMITTED', 'responsibleUserName' => 'User', 'decisionDate' => now()->subDays(2)->toIso8601String(), 'remarks' => 'Submitted offer letter'],
                 ['stepNumber' => 2, 'stepName' => 'Faculty Guide Review', 'assignedRole' => 'GUIDE', 'decision' => 'PENDING', 'responsibleUserName' => 'Dr. K. Ramanathan'],
                 ['stepNumber' => 3, 'stepName' => 'CDC Coordinator Verification', 'assignedRole' => 'ADMIN_INTERNSHIP', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Internship Coordinator'],
                 ['stepNumber' => 4, 'stepName' => 'Final Approval', 'assignedRole' => 'ADMIN_SUPER', 'decision' => 'PENDING', 'responsibleUserName' => 'CDC Administration'],
@@ -501,7 +501,7 @@ class DatabaseSeeder extends Seeder
             'channel' => 'WhatsApp',
             'scheduled_date' => now()->addDays(15)->toDateString(),
             'delivery_status' => 'SCHEDULED',
-            'sample_message' => 'CDC Alert: Your ward Sneha R is eligible for Razorpay (21.0 LPA). Please remind them to apply before the deadline.',
+            'sample_message' => 'CDC Alert: Your ward User is eligible for Razorpay (21.0 LPA). Please remind them to apply before the deadline.',
         ]);
 
         MentoringRemark::create([
@@ -529,7 +529,7 @@ class DatabaseSeeder extends Seeder
             'sender_user_id' => $guide1->id,
             'sender_role' => 'GUIDE',
             'sender_name' => $guide1->name,
-            'message' => 'Received Sneha. I will review the work profile today—keep practicing your weekly LeetCode set!',
+            'message' => 'Received. I will review the work profile today—keep practicing your weekly LeetCode set!',
         ]);
 
         Mou::create([

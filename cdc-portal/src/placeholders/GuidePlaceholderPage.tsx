@@ -42,7 +42,7 @@ export const GuidePlaceholderPage: React.FC = () => {
                 4.1 & 4.2 Assigned Students Roster
               </div>
               <p className="text-xs text-slate-600">
-                Real-time visibility into assigned mentees (e.g. Sneha R), profile completion rings, pending documents, and placement status.
+                Real-time visibility into assigned mentees (e.g. User), profile completion rings, pending documents, and placement status.
               </p>
             </div>
 

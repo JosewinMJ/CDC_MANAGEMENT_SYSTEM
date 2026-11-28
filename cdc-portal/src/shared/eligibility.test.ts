@@ -35,8 +35,8 @@ const mockAcademicRecord: AcademicRecord = {
 const mockStudent: Student = {
   id: 'stud-101',
   regNumber: '21BCE1042',
-  fullName: 'Sneha R',
-  email: 'sneha.r2023@vitstudent.ac.in',
+  fullName: 'User',
+  email: 'user@vitstudent.ac.in',
   phone: '+91 94451 98765',
   dob: '2004-05-14',
   gender: 'Female',
@@ -66,12 +66,12 @@ const mockStudent: Student = {
     achievements: [],
   },
   documents: [],
-  leetcodeUsername: 'sneha_dev',
+  leetcodeUsername: 'user_dev',
 };
 
 const mockCodingProfile: CodingProfile = {
-  username: 'sneha_dev',
-  fullName: 'Sneha R',
+  username: 'user_dev',
+  fullName: 'User',
   regNumber: '21BCE1042',
   classSection: 'CSE-A',
   trackingStatus: CodingTrackingStatus.OK,
@@ -118,7 +118,7 @@ describe('evaluateEligibility', () => {
   it('evaluates student as NOT_ELIGIBLE when CGPA is below threshold', () => {
     const highCgpaCriteria: EligibilityCriteria = {
       ...standardCriteria,
-      minCgpa: 8.5, // Sneha has 8.42
+      minCgpa: 8.5, // User has 8.42
     };
     const result = evaluateEligibility(mockStudent, mockAcademicRecord, mockCodingProfile, highCgpaCriteria);
     expect(result.overallStatus).toBe(EligibilityStatus.NOT_ELIGIBLE);
@@ -150,7 +150,7 @@ describe('evaluateEligibility', () => {
   it('evaluates optional coding practice threshold correctly', () => {
     const criteriaWithCoding: EligibilityCriteria = {
       ...standardCriteria,
-      minCodingProblemsSolved: 50, // Sneha has 48
+      minCodingProblemsSolved: 50, // User has 48
     };
     const result = evaluateEligibility(mockStudent, mockAcademicRecord, mockCodingProfile, criteriaWithCoding);
     expect(result.overallStatus).toBe(EligibilityStatus.NOT_ELIGIBLE);
