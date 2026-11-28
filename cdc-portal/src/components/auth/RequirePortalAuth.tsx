@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, PortalScope } from '../../services/apiClient';
@@ -10,15 +9,63 @@ interface RequirePortalAuthProps {
 }
 
 export const RequirePortalAuth: React.FC<RequirePortalAuthProps> = ({ portal, children }) => {
-  const { isPortalAuthenticated, getPortalUser, clearMustChangePassword } = useAuth();
+  const { isPortalAuthenticated, ensureDirectSession, getPortalUser, clearMustChangePassword } = useAuth();
   const [currPass, setCurrPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confPass, setConfPass] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(!isPortalAuthenticated(portal));
+  const [connectError, setConnectError] = useState<string | null>(null);
 
-  if (!isPortalAuthenticated(portal)) {
-    return <Navigate to="/login" replace />;
+  const authed = isPortalAuthenticated(portal);
+
+  useEffect(() => {
+    if (authed) {
+      setConnecting(false);
+      return;
+    }
+    let cancelled = false;
+    setConnecting(true);
+    setConnectError(null);
+    ensureDirectSession(portal)
+      .then(() => {
+        if (!cancelled) setConnecting(false);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setConnectError(error instanceof Error ? error.message : 'Unable to connect to portal.');
+          setConnecting(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, portal]);
+
+  if (!authed && connecting) {
+    return (
+      <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-5 text-sm font-semibold text-[#142B4A]">
+          Opening {portal} dashboard...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authed && connectError) {
+    return (
+      <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-rose-200 shadow-sm px-6 py-5 max-w-md space-y-2 text-center">
+          <p className="text-sm font-bold text-rose-700">Unable to load {portal} dashboard</p>
+          <p className="text-xs text-slate-600">{connectError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authed) {
+    return null;
   }
 
   const user = getPortalUser(portal);

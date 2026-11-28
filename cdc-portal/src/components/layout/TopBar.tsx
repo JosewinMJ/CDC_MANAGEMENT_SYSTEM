@@ -5,7 +5,6 @@ import {
   Search,
   Bell,
   HelpCircle,
-  LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationPanel } from './NotificationPanel';
@@ -18,7 +17,7 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
-  const { currentUser, logoutFromPortal } = useAuth();
+  const { currentUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -77,11 +76,6 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
     if (searchQuery.trim()) {
       navigate(`/student/companies?search=${encodeURIComponent(searchQuery.trim())}`);
     }
-  };
-
-  const handleLogout = async () => {
-    await logoutFromPortal('student');
-    navigate('/login', { replace: true });
   };
 
   return (
@@ -164,14 +158,20 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
             <div className="text-xs font-bold text-[#142B4A]">{currentUser.name}</div>
             <p className="text-[11px] text-[#78869A]">{currentUser.email}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            title="Sign Out"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Sign Out</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <Link
+              to="/guide/dashboard"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#142B4A] bg-slate-100 hover:bg-blue-50 hover:text-[#2855A6] transition"
+            >
+              Guide
+            </Link>
+            <Link
+              to="/admin/dashboard"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#142B4A] bg-slate-100 hover:bg-blue-50 hover:text-[#2855A6] transition"
+            >
+              Admin
+            </Link>
+          </div>
         </div>
       </div>
     </header>

@@ -5,7 +5,6 @@ import { NotificationProvider } from './context/NotificationContext';
 import { AppShell } from './components/layout/AppShell';
 import { RequirePortalAuth } from './components/auth/RequirePortalAuth';
 import { ChangePatternCard } from './components/auth/ChangePatternCard';
-import { PortalLoginPage } from './features/auth/PortalLoginPage';
 
 // Features
 import { StudentDashboard } from './features/dashboard/StudentDashboard';
@@ -43,11 +42,13 @@ export const App: React.FC = () => {
       <AuthProvider>
         <NotificationProvider>
           <Routes>
-            {/* Unified Pattern-Lock Login Screen */}
-            <Route path="/login" element={<PortalLoginPage />} />
-            <Route path="/student/login" element={<Navigate to="/login" replace />} />
-            <Route path="/guide/login" element={<Navigate to="/login" replace />} />
-            <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+            {/* Login temporarily disconnected: direct portal access */}
+            <Route path="/login" element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="/student/login" element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="/guide/login" element={<Navigate to="/guide/dashboard" replace />} />
+            <Route path="/admin/login" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/guide" element={<Navigate to="/guide/dashboard" replace />} />
+            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
 
             {/* Protected Student Portal */}
             <Route
@@ -144,8 +145,8 @@ export const App: React.FC = () => {
             />
 
             {/* Root & Catch-all Redirects */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
           </Routes>
         </NotificationProvider>
       </AuthProvider>

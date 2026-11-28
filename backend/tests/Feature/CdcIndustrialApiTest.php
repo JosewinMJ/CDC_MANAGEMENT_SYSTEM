@@ -422,5 +422,12 @@ class CdcIndustrialApiTest extends TestCase
             'password' => 'Portal@1234',
             'pattern' => '6-4-2-5-8',
         ])->assertOk()->assertJsonPath('resolvedPortal', 'student');
+
+        // 5. Direct portal session issues scoped token when login wall is disconnected
+        foreach (['student', 'guide', 'admin'] as $scope) {
+            $this->postJson('/api/v1/auth/direct-session', ['portal' => $scope])
+                ->assertOk()
+                ->assertJsonPath('resolvedPortal', $scope);
+        }
     }
 }

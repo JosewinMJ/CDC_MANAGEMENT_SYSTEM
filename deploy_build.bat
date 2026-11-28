@@ -15,5 +15,6 @@ if exist "%~dp0cdc-portal\dist\favicon.svg" copy /y "%~dp0cdc-portal\dist\favico
 
 echo.
 echo Single-domain production package ready in backend\public!
-echo   - Unified Portal Login: /login
-echo   - Role Redirects:       /student, /guide, /admin
+echo   - Student Dashboard: /student/dashboard
+echo   - Guide Dashboard:   /guide/dashboard
+echo   - Admin Dashboard:   /admin/dashboard

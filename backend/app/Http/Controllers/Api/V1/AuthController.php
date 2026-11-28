@@ -66,6 +66,52 @@ class AuthController extends Controller
         ]);
     }
 
+    public function directSession(Request $request): JsonResponse
+    {
+        if (!config('app.direct_portal_access', true)) {
+            return response()->json(['message' => 'Direct portal access is disabled.'], 403);
+        }
+
+        $data = $request->validate([
+            'portal' => ['required', 'in:student,guide,admin'],
+        ]);
+
+        $emailMap = [
+            'student' => 'sneha.r2023@vitstudent.ac.in',
+            'guide' => 'k.ramanathan@vit.ac.in',
+            'admin' => 'cdc.admin@vit.ac.in',
+        ];
+
+        $user = User::where('email', $emailMap[$data['portal']])->where('is_active', true)->first()
+            ?? match ($data['portal']) {
+                'admin' => User::where('role', 'like', 'ADMIN%')->where('is_active', true)->first(),
+                'guide' => User::where('role', 'GUIDE')->where('is_active', true)->first(),
+                default => User::where('role', 'STUDENT')->where('is_active', true)->first(),
+            };
+
+        if (!$user) {
+            return response()->json(['message' => 'No active account found for this portal.'], 404);
+        }
+
+        $token = $user->createToken('cdc-portal-' . strtolower($user->role) . '-direct')->plainTextToken;
+        $resolvedPortal = $user->resolvePortalScope();
+
+        return response()->json([
+            'token' => $token,
+            'resolvedPortal' => $resolvedPortal,
+            'redirectTo' => '/' . $resolvedPortal,
+            'user' => [
+                'id' => (string)$user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'department' => $user->department,
+                'avatarUrl' => $user->avatar_url,
+                'mustChangePassword' => false,
+            ],
+        ]);
+    }
+
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();

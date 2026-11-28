@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import {
-  ArrowRight, Bell, CalendarDays, ClipboardCheck, Clock, FileCheck2, LayoutDashboard, LogOut, MessageSquare, RotateCcw, Terminal, UserRound, Users,
+  ArrowRight, Bell, CalendarDays, ClipboardCheck, Clock, FileCheck2, LayoutDashboard, MessageSquare, RotateCcw, Terminal, UserRound, Users,
 } from 'lucide-react';
 import reviewIllustration from '../../assets/guide-review.svg';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -36,14 +36,12 @@ const toolsNavigation = [
 const emptySubmissions: InternshipSubmission[] = [];
 
 export function GuidePortal() {
-  const { currentUser, logoutFromPortal } = useAuth();
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const location = useLocation();
   const [dashboard, setDashboard] = useState<GuideDashboard | null>(null);
   const [submissions, setSubmissions] = useState<InternshipSubmission[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,12 +60,6 @@ export function GuidePortal() {
   }, [refresh]);
 
   useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
-
-  async function signOut() {
-    setSigningOut(true);
-    await logoutFromPortal('guide');
-    navigate('/login', { replace: true });
-  }
 
   function updateReview(updated: InternshipSubmission) {
     setSubmissions(list => list?.map(item => item.id === updated.id ? updated : item) ?? null);
@@ -101,9 +93,14 @@ export function GuidePortal() {
             <Icon size={17} /> {title}
           </NavLink>)}
       </nav>
-      <button type="button" disabled={signingOut} className="m-3 flex items-center justify-center gap-2 rounded-lg bg-rose-500/20 px-3 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/30" onClick={signOut}>
-        <LogOut size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}
-      </button>
+      <div className="m-3 space-y-1.5 border-t border-white/10 pt-3">
+        <Link to="/student/dashboard" className="flex items-center justify-center rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-blue-100 hover:bg-white/20">
+          Student Portal
+        </Link>
+        <Link to="/admin/dashboard" className="flex items-center justify-center rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-blue-100 hover:bg-white/20">
+          Admin Portal
+        </Link>
+      </div>
     </aside>
     <div className="min-w-0">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white shadow-xs">
@@ -131,7 +128,7 @@ export function GuidePortal() {
           <Route path="chat" element={<GuideChat />} />
           <Route path="coding" element={<GuideCoding />} />
           <Route path="notices" element={loadPortal(data => <GuideNotices mentees={data.mentees} />)} />
-          <Route path="profile" element={<GuideProfile name={currentUser.name} email={currentUser.email} count={dashboard?.mentees.length} signingOut={signingOut} onSignOut={signOut} />} />
+          <Route path="profile" element={<GuideProfile name={currentUser.name} email={currentUser.email} count={dashboard?.mentees.length} />} />
           <Route path="*" element={<div className="space-y-4"><PageHeading title="Guide page unavailable" back="/guide/dashboard" /><Empty>Choose a section from the Guide Portal navigation.</Empty></div>} />
         </Routes>
       </main>
@@ -262,8 +259,8 @@ function MenteeRecordRoute() {
   return <GuideMenteeDetail studentId={id} />;
 }
 
-function GuideProfile({ name, email, count, signingOut, onSignOut }: {
-  name: string; email: string; count?: number; signingOut: boolean; onSignOut: () => void;
+function GuideProfile({ name, email, count }: {
+  name: string; email: string; count?: number;
 }) {
   return <div className="max-w-2xl space-y-4">
     <PageHeading title="Guide profile" back="/guide/dashboard" />
@@ -273,6 +270,9 @@ function GuideProfile({ name, email, count, signingOut, onSignOut }: {
     </div>
     <RecordLink to="/guide/students" title="View assigned students" description={`${count ?? 0} students assigned`} />
     {toolsNavigation.map(tool => <RecordLink key={tool.to} to={tool.to} icon="file" title={tool.title} />)}
-    <button type="button" onClick={onSignOut} disabled={signingOut} className={`${secondary} gap-2`}><LogOut size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}</button>
+    <div className="flex flex-wrap gap-2 pt-2">
+      <Link to="/student/dashboard" className={secondary}>Open Student Dashboard</Link>
+      <Link to="/admin/dashboard" className={secondary}>Open Admin Dashboard</Link>
+    </div>
   </div>;
 }

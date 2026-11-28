@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     // Public Authentication
     Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/direct-session', [AuthController::class, 'directSession']);
 
     // Authenticated Cross-Portal Routes (Sanctum Token Required)
     Route::middleware('auth:sanctum')->group(function () {

@@ -23,6 +23,7 @@ interface AuthContextType {
   currentRole: UserRole;
   getPortalUser: (scope: PortalScope) => AuthenticatedUser | null;
   isPortalAuthenticated: (scope: PortalScope) => boolean;
+  ensureDirectSession: (scope: PortalScope) => Promise<AuthenticatedUser>;
   loginUnified: (email: string, password: string, pattern: string) => Promise<UnifiedLoginResult>;
   logoutFromPortal: (scope?: PortalScope) => Promise<void>;
   clearMustChangePassword: (scope: PortalScope) => void;
@@ -107,6 +108,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Boolean(token && user && roleMatchesPortal(user.role, scope));
   };
 
+  const ensureDirectSession = async (scope: PortalScope): Promise<AuthenticatedUser> => {
+    const existing = readStoredUser(scope);
+    if (getAuthToken(scope) && existing && roleMatchesPortal(existing.role, scope)) {
+      return existing;
+    }
+
+    const res = await apiRequest<{
+      token: string;
+      resolvedPortal: PortalScope;
+      user: AuthenticatedUser;
+    }>('/auth/direct-session', {
+      method: 'POST',
+      body: JSON.stringify({ portal: scope }),
+    });
+
+    setAuthToken(res.token, scope);
+    localStorage.setItem(USER_KEYS[scope], JSON.stringify(res.user));
+    bump();
+    return res.user;
+  };
+
   const loginUnified = async (
     email: string,
     password: string,
@@ -167,6 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentRole,
         getPortalUser,
         isPortalAuthenticated,
+        ensureDirectSession,
         loginUnified,
         logoutFromPortal,
         clearMustChangePassword,

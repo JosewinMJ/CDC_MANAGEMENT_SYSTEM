@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Route, Routes, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -10,7 +10,6 @@ import {
   ClipboardCheck,
   DatabaseBackup,
   Terminal,
-  LogOut,
   Upload,
   Download,
   Plus,
@@ -55,8 +54,7 @@ interface AdminDashboardResp {
 }
 
 export const AdminPortal: React.FC = () => {
-  const { currentUser, logoutFromPortal } = useAuth();
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [dash, setDash] = useState<AdminDashboardResp | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [faculty, setFaculty] = useState<any[]>([]);
@@ -129,11 +127,6 @@ export const AdminPortal: React.FC = () => {
   useEffect(() => {
     loadAll(academicYear, studentQuery, studentBranchFilter);
   }, [academicYear, studentBranchFilter]);
-
-  const handleLogout = async () => {
-    await logoutFromPortal('admin');
-    navigate('/login', { replace: true });
-  };
 
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -377,12 +370,15 @@ export const AdminPortal: React.FC = () => {
           })}
         </nav>
         <div className="p-3 border-t border-white/10 space-y-1.5 text-xs">
+          <Link to="/student/dashboard" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
+            Student Portal
+          </Link>
+          <Link to="/guide/dashboard" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
+            Guide Portal
+          </Link>
           <a href="http://localhost/phpmyadmin/" target="_blank" rel="noreferrer" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
             Open phpMyAdmin
           </a>
-          <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 font-semibold">
-            <LogOut className="w-3.5 h-3.5" /> Sign Out
-          </button>
         </div>
       </aside>
 

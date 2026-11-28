@@ -41,6 +41,8 @@ return [
 
     'debug' => (bool) env('APP_DEBUG', false),
 
+    'direct_portal_access' => (bool) env('PORTAL_DIRECT_ACCESS', true),
+
     /*
     |--------------------------------------------------------------------------
     | Application URL
