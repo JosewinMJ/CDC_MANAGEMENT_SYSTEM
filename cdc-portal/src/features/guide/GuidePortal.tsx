@@ -93,14 +93,6 @@ export function GuidePortal() {
             <Icon size={17} /> {title}
           </NavLink>)}
       </nav>
-      <div className="m-3 space-y-1.5 border-t border-white/10 pt-3">
-        <Link to="/student/dashboard" className="flex items-center justify-center rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-blue-100 hover:bg-white/20">
-          Student Portal
-        </Link>
-        <Link to="/admin/dashboard" className="flex items-center justify-center rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-blue-100 hover:bg-white/20">
-          Admin Portal
-        </Link>
-      </div>
     </aside>
     <div className="min-w-0">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white shadow-xs">
@@ -270,9 +262,5 @@ function GuideProfile({ name, email, count }: {
     </div>
     <RecordLink to="/guide/students" title="View assigned students" description={`${count ?? 0} students assigned`} />
     {toolsNavigation.map(tool => <RecordLink key={tool.to} to={tool.to} icon="file" title={tool.title} />)}
-    <div className="flex flex-wrap gap-2 pt-2">
-      <Link to="/student/dashboard" className={secondary}>Open Student Dashboard</Link>
-      <Link to="/admin/dashboard" className={secondary}>Open Admin Dashboard</Link>
-    </div>
   </div>;
 }

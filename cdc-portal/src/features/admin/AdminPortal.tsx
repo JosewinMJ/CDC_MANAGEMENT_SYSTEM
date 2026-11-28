@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes, Navigate } from 'react-router-dom';
+import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -370,12 +370,6 @@ export const AdminPortal: React.FC = () => {
           })}
         </nav>
         <div className="p-3 border-t border-white/10 space-y-1.5 text-xs">
-          <Link to="/student/dashboard" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
-            Student Portal
-          </Link>
-          <Link to="/guide/dashboard" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
-            Guide Portal
-          </Link>
           <a href="http://localhost/phpmyadmin/" target="_blank" rel="noreferrer" className="block text-center py-2 rounded-lg bg-white/10 hover:bg-white/20">
             Open phpMyAdmin
           </a>

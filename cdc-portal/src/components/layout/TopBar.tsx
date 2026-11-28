@@ -158,20 +158,6 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
             <div className="text-xs font-bold text-[#142B4A]">{currentUser.name}</div>
             <p className="text-[11px] text-[#78869A]">{currentUser.email}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Link
-              to="/guide/dashboard"
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#142B4A] bg-slate-100 hover:bg-blue-50 hover:text-[#2855A6] transition"
-            >
-              Guide
-            </Link>
-            <Link
-              to="/admin/dashboard"
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#142B4A] bg-slate-100 hover:bg-blue-50 hover:text-[#2855A6] transition"
-            >
-              Admin
-            </Link>
-          </div>
         </div>
       </div>
     </header>
