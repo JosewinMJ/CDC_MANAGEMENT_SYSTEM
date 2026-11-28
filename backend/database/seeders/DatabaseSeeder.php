@@ -13,6 +13,7 @@ use App\Models\FacultyProfile;
 use App\Models\Internship;
 use App\Models\Interview;
 use App\Models\JobRole;
+use App\Models\MentorMessage;
 use App\Models\MentoringRemark;
 use App\Models\Mou;
 use App\Models\Notice;
@@ -511,6 +512,24 @@ class DatabaseSeeder extends Seeder
             'category' => 'mentoring',
             'remark' => 'Strong coding consistency; prepare system design case studies for dream roles.',
             'is_confidential' => true,
+        ]);
+
+        MentorMessage::create([
+            'student_profile_id' => $snehaProfile->id,
+            'guide_user_id' => $guide1->id,
+            'sender_user_id' => $snehaUser->id,
+            'sender_role' => 'STUDENT',
+            'sender_name' => $snehaUser->name,
+            'message' => 'Good morning Sir, I uploaded my Track 2 offer letter from Cognizant for your review.',
+        ]);
+
+        MentorMessage::create([
+            'student_profile_id' => $snehaProfile->id,
+            'guide_user_id' => $guide1->id,
+            'sender_user_id' => $guide1->id,
+            'sender_role' => 'GUIDE',
+            'sender_name' => $guide1->name,
+            'message' => 'Received Sneha. I will review the work profile today—keep practicing your weekly LeetCode set!',
         ]);
 
         Mou::create([

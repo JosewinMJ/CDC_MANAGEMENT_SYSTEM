@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowRight, Bell, CalendarDays, ClipboardCheck, Clock, FileCheck2, LayoutDashboard, LogOut, RotateCcw, Terminal, UserRound, Users,
+  ArrowRight, Bell, CalendarDays, ClipboardCheck, Clock, FileCheck2, LayoutDashboard, LogOut, MessageSquare, RotateCcw, Terminal, UserRound, Users,
 } from 'lucide-react';
 import reviewIllustration from '../../assets/guide-review.svg';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -14,6 +14,7 @@ import {
 } from './GuidePanels';
 import { GuideMenteeDetail } from './GuideMenteeDetail';
 import { GuideAllocation, GuideDocuments, ReviewDetail, ReviewQueue } from './GuideReviews';
+import { GuideChat } from './GuideChat';
 import { Feedback, GuideCoding, GuideNotices } from './GuideTools';
 import {
   dateKey, initials, internshipEvents, reviewPath, reviewStatus, trackTitle, tracks,
@@ -28,6 +29,7 @@ const mainNavigation = [
 ];
 const toolsNavigation = [
   { to: '/guide/documents', title: 'Documents', icon: FileCheck2 },
+  { to: '/guide/chat', title: 'Mentor chat', icon: MessageSquare },
   { to: '/guide/coding', title: 'Coding challenge', icon: Terminal },
   { to: '/guide/notices', title: 'Notices', icon: Bell },
 ];
@@ -126,6 +128,7 @@ export function GuidePortal() {
           <Route path="internships/:id/documents" element={loadPortal((data, reviews) => <ReviewDetail submissions={reviews} mentees={data.mentees} onReview={updateReview} onRefresh={retry} showDocuments />)} />
           <Route path="calendar" element={loadPortal(() => <GuideCalendar events={events} />)} />
           <Route path="documents" element={loadPortal(data => <GuideDocuments documents={data.documents} onVerified={removeVerifiedDocument} />)} />
+          <Route path="chat" element={<GuideChat />} />
           <Route path="coding" element={<GuideCoding />} />
           <Route path="notices" element={loadPortal(data => <GuideNotices mentees={data.mentees} />)} />
           <Route path="profile" element={<GuideProfile name={currentUser.name} email={currentUser.email} count={dashboard?.mentees.length} signingOut={signingOut} onSignOut={signOut} />} />

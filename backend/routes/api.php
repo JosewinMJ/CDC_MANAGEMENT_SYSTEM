@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AdminPortalController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CodingChallengeController;
 use App\Http\Controllers\Api\V1\GuidePortalController;
+use App\Http\Controllers\Api\V1\MentorChatController;
 use App\Http\Controllers\Api\V1\StudentPortalController;
 use App\Http\Controllers\Api\V1\StudentDocumentController;
 use Illuminate\Support\Facades\Route;
@@ -53,6 +54,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/internships/opportunities', [StudentPortalController::class, 'internshipOpportunities']);
             Route::post('/internships/{id}/completion', [StudentPortalController::class, 'submitCompletion']);
             Route::get('/students/me/mentoring-requests', [StudentPortalController::class, 'mentoringRequests']);
+            Route::get('/chat/messages', [MentorChatController::class, 'studentMessages']);
+            Route::post('/chat/messages', [MentorChatController::class, 'studentSend']);
             Route::get('/coding-challenge/profile', [CodingChallengeController::class, 'profile']);
             Route::post('/coding-challenge/verify-username', [CodingChallengeController::class, 'verifyUsername']);
             Route::post('/coding-challenge/register-username', [CodingChallengeController::class, 'registerUsername']);
@@ -71,6 +74,9 @@ Route::prefix('v1')->group(function () {
             Route::patch('/documents/{id}/verification', [GuidePortalController::class, 'verifyDocument']);
             Route::get('/guide/notices', [GuidePortalController::class, 'myNotices']);
             Route::post('/guide/notices', [GuidePortalController::class, 'publishNotice']);
+            Route::get('/guide/chat/threads', [MentorChatController::class, 'guideThreads']);
+            Route::get('/guide/students/{id}/chat', [MentorChatController::class, 'guideMessages']);
+            Route::post('/guide/students/{id}/chat', [MentorChatController::class, 'guideSend']);
             Route::get('/coding-challenge/questions', [CodingChallengeController::class, 'listQuestions']);
             Route::post('/coding-challenge/questions', [CodingChallengeController::class, 'storeQuestion']);
             Route::get('/coding-challenge/leaderboard', [CodingChallengeController::class, 'leaderboard']);

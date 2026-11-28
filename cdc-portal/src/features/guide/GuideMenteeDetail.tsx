@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { apiRequest } from '../../services/apiClient';
 import { DocumentDownload } from '../../components/common/DocumentDownload';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -93,6 +94,11 @@ export function GuideMenteeDetail({ studentId }: { studentId?: string }) {
         description={`Reg. ${student.reg_number} · ${student.branch} · Semester ${student.semester} · ${student.user?.email || ''}`}
         back="/guide/students"
       />
+      <div>
+        <Link to={`/guide/chat?studentId=${student.id}`} className={primary}>
+          Open Direct Chat with {student.user?.name}
+        </Link>
+      </div>
 
       {!hasResume && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs font-semibold text-amber-900">

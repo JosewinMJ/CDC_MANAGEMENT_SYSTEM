@@ -317,4 +317,35 @@ class CdcIndustrialApiTest extends TestCase
             'faculty_coordinator' => 'Dr. K. Ramanathan',
         ])->assertCreated();
     }
+
+    public function test_mentor_student_two_way_chat_and_portal_isolation(): void
+    {
+        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $guide = User::where('email', 'k.ramanathan@vit.ac.in')->firstOrFail();
+        $otherGuide = User::where('email', 'kavita.nair@cdc.edu')->firstOrFail();
+
+        // Student sends message to assigned mentor
+        Sanctum::actingAs($student);
+        $this->getJson('/api/v1/chat/messages')
+            ->assertOk()
+            ->assertJsonPath('guide.id', $guide->id);
+        $this->postJson('/api/v1/chat/messages', ['message' => 'Hello mentor, checking my drive shortlist.'])
+            ->assertCreated()
+            ->assertJsonPath('sender_role', 'STUDENT');
+
+        // Other guide CANNOT read or reply to unassigned student's chat
+        Sanctum::actingAs($otherGuide);
+        $this->getJson("/api/v1/guide/students/{$student->studentProfile->id}/chat")->assertNotFound();
+        $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/chat", ['message' => 'Intrusion'])->assertNotFound();
+
+        // Assigned guide reads threads, reads messages (marks read), and replies
+        Sanctum::actingAs($guide);
+        $this->getJson('/api/v1/guide/chat/threads')->assertOk()->assertJsonFragment(['regNumber' => '21BCE1042']);
+        $this->getJson("/api/v1/guide/students/{$student->studentProfile->id}/chat")
+            ->assertOk()
+            ->assertJsonFragment(['message' => 'Hello mentor, checking my drive shortlist.']);
+        $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/chat", ['message' => 'You are shortlisted for Infosys SP.'])
+            ->assertCreated()
+            ->assertJsonPath('sender_role', 'GUIDE');
+    }
 }

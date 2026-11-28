@@ -29,6 +29,7 @@ import { WeeklyReportsPage } from './features/daily-coding/WeeklyReportsPage';
 import { RegisterLeetCodePage } from './features/daily-coding/RegisterLeetCodePage';
 
 import { NoticesPage } from './features/notices/NoticesPage';
+import { MentorChatPage } from './features/chat/MentorChatPage';
 import { ParentAlertsPage } from './features/parent-alerts/ParentAlertsPage';
 
 // Integrated Guide & Admin Portals (Laravel 12 Industrial Backend)
@@ -87,6 +88,7 @@ export const App: React.FC = () => {
               </Route>
 
               <Route path="notices" element={<NoticesPage />} />
+              <Route path="chat" element={<MentorChatPage />} />
               <Route path="parent-alerts" element={<ParentAlertsPage />} />
 
               {/* Help & Support Info View */}

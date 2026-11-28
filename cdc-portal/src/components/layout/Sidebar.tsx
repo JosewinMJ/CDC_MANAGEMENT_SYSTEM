@@ -23,6 +23,7 @@ import {
   CalendarDays,
   UserCheck,
   Bell,
+  MessageSquare,
   AlertTriangle,
   HelpCircle,
   Settings,
@@ -88,6 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       title: 'COMMUNICATION',
       items: [
         { label: 'Notices & Announcements', path: '/student/notices', icon: Bell },
+        { label: 'Mentor Chat', path: '/student/chat', icon: MessageSquare },
         { label: 'Parent Alerts', path: '/student/parent-alerts', icon: AlertTriangle },
       ],
     },

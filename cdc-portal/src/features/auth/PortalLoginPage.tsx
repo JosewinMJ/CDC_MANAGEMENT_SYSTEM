@@ -148,8 +148,15 @@ export const PortalLoginPage: React.FC<PortalLoginPageProps> = ({ portal }) => {
             {loading ? 'Signing in...' : `Sign In to ${meta.title}`}
           </button>
 
-          <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400 text-center">
-            Career Development Centre &middot; Role-Protected Sanctum Authentication
+          <div className="pt-3 border-t border-slate-100 space-y-2 text-center">
+            <div className="flex items-center justify-center gap-3 text-xs font-semibold">
+              {portal !== 'student' && <a href="/student/login" className="text-[#2855A6] hover:underline">Student Login</a>}
+              {portal !== 'guide' && <a href="/guide/login" className="text-[#2855A6] hover:underline">Guide Login</a>}
+              {portal !== 'admin' && <a href="/admin/login" className="text-[#2855A6] hover:underline">Admin Login</a>}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Career Development Centre &middot; Role-Protected Sanctum Authentication
+            </div>
           </div>
         </form>
       </div>

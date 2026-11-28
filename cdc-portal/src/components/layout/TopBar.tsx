@@ -68,6 +68,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
     posted: 'Posted Questions',
     weekly: 'Weekly Reports',
     notices: 'Notices & Announcements',
+    chat: 'Mentor Chat',
     'parent-alerts': 'Parent Alerts',
   };
 

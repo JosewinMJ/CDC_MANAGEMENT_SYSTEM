@@ -76,7 +76,7 @@ class StudentPortalController extends Controller
                 'placedCompany' => $profile->placed_company,
                 'packageLpa' => $profile->package_lpa,
             ],
-            'skills' => $profile->skills ?? [
+            'skills' => array_merge([
                 'technicalSkills' => [],
                 'nonTechnicalSkills' => [],
                 'programmingLanguages' => [],
@@ -84,7 +84,7 @@ class StudentPortalController extends Controller
                 'projects' => [],
                 'certifications' => [],
                 'achievements' => [],
-            ],
+            ], $profile->skills ?? []),
             'documents' => $profile->documents,
         ]);
     }
