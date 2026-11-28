@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MessageSquare, RefreshCw, Send } from 'lucide-react';
+import { Megaphone, MessageSquare, RefreshCw, Search, Send } from 'lucide-react';
 import { apiRequest } from '../../services/apiClient';
 import { formatDateTime } from '../../shared/utils';
 import { card, Empty, field, PageHeading, primary, secondary } from './GuidePanels';
@@ -37,6 +37,11 @@ export function GuideChat() {
   const [activeStudent, setActiveStudent] = useState<any>(null);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastText, setBroadcastText] = useState('');
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
   const [error, setError] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -99,20 +104,103 @@ export function GuideChat() {
     }
   };
 
+  const handleBroadcast = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!broadcastText.trim() || broadcasting) return;
+    setBroadcasting(true);
+    setError('');
+    setStatusNote('');
+    try {
+      const res = await apiRequest<{ sentCount: number }>('/guide/chat/broadcast', {
+        method: 'POST',
+        portal: 'guide',
+        body: JSON.stringify({ message: broadcastText.trim() }),
+      });
+      setBroadcastText('');
+      setShowBroadcast(false);
+      setStatusNote(`Sent message to ${res.sentCount} assigned student(s).`);
+      await Promise.all([
+        loadThreads(),
+        selectedId ? loadMessages(selectedId, true) : Promise.resolve(),
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send broadcast chat.');
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
+  const query = search.trim().toLowerCase();
+  const visibleThreads = threads.filter(
+    t => !query || [t.name, t.regNumber, t.branch].some(v => v.toLowerCase().includes(query))
+  );
+
   return (
     <div className="space-y-4">
-      <PageHeading title="Student Mentor Chat" description="Direct two-way messaging with your assigned students." />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeading title="Student Mentor Chat" description="Start or continue two-way chats, or message all students assigned under you at once." />
+        {threads.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowBroadcast(v => !v);
+              setStatusNote('');
+            }}
+            className={primary}
+          >
+            <Megaphone size={15} className="mr-1.5" />
+            {showBroadcast ? 'Close Broadcast Chat' : `Message All Students (${threads.length})`}
+          </button>
+        )}
+      </div>
       {error && <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+      {statusNote && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{statusNote}</p>}
+
+      {showBroadcast && (
+        <form onSubmit={handleBroadcast} className={`${card} p-4 space-y-3 border-blue-200 bg-blue-50/40`}>
+          <div>
+            <h2 className="text-sm font-bold text-[#142B4A]">Broadcast Chat to All Assigned Students ({threads.length})</h2>
+            <p className="text-xs text-slate-600">This message will be delivered directly into each assigned student&apos;s Mentor Chat inbox.</p>
+          </div>
+          <textarea
+            className={field}
+            required
+            rows={3}
+            maxLength={2000}
+            value={broadcastText}
+            onChange={e => setBroadcastText(e.target.value)}
+            placeholder="Write an update or instruction for all students under you..."
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowBroadcast(false)} className={secondary}>Cancel</button>
+            <button type="submit" disabled={broadcasting || !broadcastText.trim()} className={primary}>
+              <Send size={15} className="mr-1.5" /> {broadcasting ? 'Sending to all…' : 'Send to All Students'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {threads.length === 0 ? (
         <Empty>No assigned students available to message.</Empty>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside className={`${card} divide-y divide-slate-100 overflow-hidden self-start`}>
-            <div className="p-3.5 bg-slate-50 font-bold text-xs uppercase tracking-wider text-slate-500">
-              Assigned Students ({threads.length})
+            <div className="p-3 bg-slate-50 space-y-2">
+              <div className="font-bold text-xs uppercase tracking-wider text-slate-500">
+                Assigned Students ({threads.length})
+              </div>
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Filter or start chat..."
+                  className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-[#2855A6]"
+                />
+              </div>
             </div>
-            {threads.map(t => (
+            {visibleThreads.map(t => (
               <button
                 type="button"
                 key={t.studentProfileId}
@@ -130,9 +218,9 @@ export function GuideChat() {
                   )}
                 </div>
                 <p className="text-xs text-slate-500">{t.regNumber} · {t.branch}</p>
-                {t.lastMessage && (
-                  <p className="text-xs text-slate-600 truncate mt-1">{t.lastMessage}</p>
-                )}
+                <p className="text-xs text-slate-600 truncate mt-1">
+                  {t.lastMessage ? t.lastMessage : 'Click to start a chat'}
+                </p>
               </button>
             ))}
           </aside>

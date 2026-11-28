@@ -131,6 +131,7 @@ interface GuideNotice {
   publisher_name: string;
   priority: string;
   read_count?: number;
+  target_count?: number;
   target_student_profile_id?: number | null;
   created_at: string;
 }
@@ -178,11 +179,16 @@ export function GuideNotices({ mentees = [] }: { mentees?: Array<{ id: number; r
           target_student_profile_id: targetStudentId ? Number(targetStudentId) : null,
         }),
       });
+      const sentToAll = !targetStudentId;
       setTitle('');
       setContent('');
       setPriority('Normal');
       setTargetStudentId('');
-      setFeedback({ success: 'Notice published to the Student Portal feed.' });
+      setFeedback({
+        success: sentToAll
+          ? `Notice sent to all ${mentees.length} student(s) assigned under you.`
+          : 'Notice sent to the selected assigned student.',
+      });
       setRetry(v => v + 1);
     } catch (error) {
       setFeedback({ error: error instanceof Error ? error.message : 'Unable to publish the notice.' });
@@ -198,7 +204,7 @@ export function GuideNotices({ mentees = [] }: { mentees?: Array<{ id: number; r
         <h2 className="font-bold text-[#142B4A]">Publish guide notice</h2>
         <label className="block space-y-1 text-sm font-semibold">Recipients
           <select className={field} value={targetStudentId} onChange={e => setTargetStudentId(e.target.value)}>
-            <option value="">All Assigned Students</option>
+            <option value="">All Assigned Students Under Me ({mentees.length})</option>
             {mentees.map(m => (
               <option key={m.id} value={m.id}>{m.user.name} ({m.reg_number})</option>
             ))}
@@ -226,7 +232,7 @@ export function GuideNotices({ mentees = [] }: { mentees?: Array<{ id: number; r
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-[#142B4A]">{n.title}</h3>
                 <span className="rounded-full bg-[#EAF2FF] px-2 py-0.5 text-xs font-bold text-[#2855A6]">
-                  Read by {n.read_count ?? 0}
+                  Read by {n.read_count ?? 0}{typeof n.target_count === 'number' ? ` / ${n.target_count}` : ''}
                 </span>
               </div>
               <p className="text-xs text-slate-600">{formatDate(n.created_at)}{n.target_student_profile_id ? ' · Selected student' : ' · All students'}</p>

@@ -356,6 +356,26 @@ class CdcIndustrialApiTest extends TestCase
         $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/chat", ['message' => 'You are shortlisted for Infosys SP.'])
             ->assertCreated()
             ->assertJsonPath('sender_role', 'GUIDE');
+
+        // Assigned guide broadcasts chat + notice to ALL assigned students without leaking to other guides' mentees
+        $otherStudent = User::where('email', 'rohan.v@vitstudent.ac.in')->firstOrFail();
+        $this->postJson('/api/v1/guide/chat/broadcast', [
+            'message' => 'Cohort review meeting at 4 PM today.',
+        ])->assertCreated()->assertJsonPath('sentCount', 2);
+
+        $this->postJson('/api/v1/guide/notices', [
+            'title' => 'Mentee Weekly Standup',
+            'content' => 'Submit internship logs before Friday.',
+            'priority' => 'High',
+        ])->assertCreated();
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/v1/chat/messages')->assertOk()->assertJsonFragment(['message' => 'Cohort review meeting at 4 PM today.']);
+        $this->getJson('/api/v1/notices')->assertOk()->assertJsonFragment(['title' => 'Mentee Weekly Standup']);
+
+        Sanctum::actingAs($otherStudent);
+        $this->getJson('/api/v1/chat/messages')->assertOk()->assertJsonMissing(['message' => 'Cohort review meeting at 4 PM today.']);
+        $this->getJson('/api/v1/notices')->assertOk()->assertJsonMissing(['title' => 'Mentee Weekly Standup']);
     }
 
     public function test_unified_pattern_lock_login_routing_and_change_pattern(): void

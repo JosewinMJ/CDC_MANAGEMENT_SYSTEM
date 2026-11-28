@@ -77,6 +77,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/guide/notices', [GuidePortalController::class, 'myNotices']);
             Route::post('/guide/notices', [GuidePortalController::class, 'publishNotice']);
             Route::get('/guide/chat/threads', [MentorChatController::class, 'guideThreads']);
+            Route::post('/guide/chat/broadcast', [MentorChatController::class, 'guideBroadcast']);
             Route::get('/guide/students/{id}/chat', [MentorChatController::class, 'guideMessages']);
             Route::post('/guide/students/{id}/chat', [MentorChatController::class, 'guideSend']);
             Route::get('/coding-challenge/questions', [CodingChallengeController::class, 'listQuestions']);

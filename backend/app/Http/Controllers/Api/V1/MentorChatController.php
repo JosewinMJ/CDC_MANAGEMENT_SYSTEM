@@ -8,6 +8,7 @@ use App\Models\StudentProfile;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MentorChatController extends Controller
 {
@@ -146,5 +147,48 @@ class MentorChatController extends Controller
 
         AuditService::log('SENT_STUDENT_CHAT', 'MentorMessage', (string)$msg->id, "Guide messaged student {$profile->reg_number}", null, $request);
         return response()->json($msg, 201);
+    }
+
+    public function guideBroadcast(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+            'student_profile_ids' => ['nullable', 'array'],
+            'student_profile_ids.*' => ['integer'],
+        ]);
+
+        $user = $request->user();
+        $ids = array_values(array_filter(array_map('intval', $data['student_profile_ids'] ?? [])));
+
+        $profiles = StudentProfile::query()
+            ->when(!$user->isAdmin(), fn ($q) => $q->where('assigned_guide_id', $user->id))
+            ->when(!empty($ids), fn ($q) => $q->whereIn('id', $ids))
+            ->get();
+
+        abort_if($profiles->isEmpty(), 422, 'No assigned students matched for chat broadcast.');
+
+        $text = trim($data['message']);
+        $sentIds = [];
+
+        DB::transaction(function () use ($profiles, $user, $text, &$sentIds): void {
+            foreach ($profiles as $profile) {
+                MentorMessage::create([
+                    'student_profile_id' => $profile->id,
+                    'guide_user_id' => $profile->assigned_guide_id ?: $user->id,
+                    'sender_user_id' => $user->id,
+                    'sender_role' => 'GUIDE',
+                    'sender_name' => $user->name,
+                    'message' => $text,
+                ]);
+                $sentIds[] = $profile->id;
+            }
+        });
+
+        AuditService::log('GUIDE_BROADCAST_CHAT', 'MentorMessage', (string)$user->id, 'Sent chat message to ' . count($sentIds) . ' assigned student(s)', null, $request);
+
+        return response()->json([
+            'sentCount' => count($sentIds),
+            'studentProfileIds' => $sentIds,
+        ], 201);
     }
 }

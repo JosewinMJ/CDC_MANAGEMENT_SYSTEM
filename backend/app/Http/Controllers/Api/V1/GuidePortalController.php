@@ -251,8 +251,9 @@ class GuidePortalController extends Controller
         ]);
 
         $user = $request->user();
-        if (!empty($data['target_student_profile_id']) && !$user->isAdmin()) {
-            StudentProfile::where('id', $data['target_student_profile_id'])
+        $targetStudentId = $data['target_student_profile_id'] ?? null;
+        if (!empty($targetStudentId) && !$user->isAdmin()) {
+            StudentProfile::where('id', $targetStudentId)
                 ->where('assigned_guide_id', $user->id)
                 ->firstOrFail();
         }
@@ -266,7 +267,8 @@ class GuidePortalController extends Controller
             'priority' => $data['priority'] ?? 'Normal',
             'is_important' => ($data['priority'] ?? 'Normal') !== 'Normal',
             'target_portal' => 'student',
-            'target_student_profile_id' => $data['target_student_profile_id'] ?? null,
+            'target_student_profile_id' => $targetStudentId,
+            'target_guide_user_id' => (!$targetStudentId && !$user->isAdmin()) ? $user->id : null,
             'read_by_student_ids' => [],
         ]);
 
@@ -276,11 +278,14 @@ class GuidePortalController extends Controller
 
     public function myNotices(Request $request): JsonResponse
     {
-        $list = Notice::where('publisher_name', $request->user()->name)
+        $user = $request->user();
+        $assignedCount = StudentProfile::where('assigned_guide_id', $user->id)->count();
+        $list = Notice::where('publisher_name', $user->name)
             ->latest()
             ->get()
-            ->map(function ($n) {
+            ->map(function ($n) use ($assignedCount) {
                 $n->read_count = count($n->read_by_student_ids ?? []);
+                $n->target_count = $n->target_student_profile_id ? 1 : $assignedCount;
                 return $n;
             });
         return response()->json($list);

@@ -201,10 +201,11 @@ function GuideOverview({ data, submissions, events }: {
     </div>
     <section className="space-y-3">
       <SectionHeader title="Guide tools" />
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <RecordLink to="/guide/chat" icon="file" title="Mentor chat" description="Chat or message all assigned students" />
+        <RecordLink to="/guide/notices" icon="file" title="Send notice to all" description={`Broadcast updates to ${data.mentees.length} mentees at once`} />
         <RecordLink to="/guide/documents" icon="file" title="Documents" description={`${data.documents.length} awaiting verification`} />
         <RecordLink to="/guide/coding" icon="file" title="Coding challenge" description="Post questions and view the leaderboard" />
-        <RecordLink to="/guide/notices" icon="file" title="Notices" description="Read announcements and publish updates" />
       </div>
     </section>
   </div>;
@@ -227,7 +228,13 @@ function MenteeRoster({ mentees, submissions }: { mentees: Mentee[]; submissions
     return [{ student, internship }];
   });
   return <div className="space-y-4">
-    <PageHeading title="Assigned students" description={`${mentees.length} ${mentees.length === 1 ? 'student' : 'students'} across your internship cohorts.`} />
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <PageHeading title="Assigned students" description={`${mentees.length} ${mentees.length === 1 ? 'student' : 'students'} across your internship cohorts.`} />
+      <div className="flex flex-wrap gap-2">
+        <Link to="/guide/chat" className={secondary}>Chat with Students</Link>
+        <Link to="/guide/notices" className={secondary}>Send Notice to All</Link>
+      </div>
+    </div>
     <input type="search" className={`${field} sm:max-w-sm`} aria-label="Search assigned students" placeholder="Search name, registration number or branch" value={search} onChange={e => setSearch(e.target.value)} />
     <Filters label="Internship track" selected={track} options={[{ value: 'all', label: 'All' }, ...tracks]}
       onChange={value => { setTrack(value); setSemester('all'); }} />
@@ -236,10 +243,19 @@ function MenteeRoster({ mentees, submissions }: { mentees: Mentee[]; submissions
     {listed.length ? <div className="grid gap-3 md:grid-cols-2">
       {listed.map(({ student, internship }) => {
         const missingResume = !(student.documents || []).some(d => d.category === 'Resume');
-        return <RecordLink key={student.id} to={`/guide/students/${student.id}`} title={student.user.name}
-          description={`Reg. ${student.reg_number} · Semester ${student.semester}${missingResume ? ' · Missing Resume' : ''}`}
-          detail={internship ? `${trackTitle(internship.track)} · ${internship.company_name}` : undefined}
-          badge={internship && <ReviewBadge submission={internship} />} />;
+        return (
+          <div key={student.id} className="space-y-1.5">
+            <RecordLink to={`/guide/students/${student.id}`} title={student.user.name}
+              description={`Reg. ${student.reg_number} · Semester ${student.semester}${missingResume ? ' · Missing Resume' : ''}`}
+              detail={internship ? `${trackTitle(internship.track)} · ${internship.company_name}` : undefined}
+              badge={internship && <ReviewBadge submission={internship} />} />
+            <div className="flex justify-end px-1">
+              <Link to={`/guide/chat?studentId=${student.id}`} className="text-xs font-semibold text-[#2855A6] hover:underline">
+                Open chat with {student.user.name} &rarr;
+              </Link>
+            </div>
+          </div>
+        );
       })}
     </div> : <Empty>No assigned students match this view.</Empty>}
     <RecordLink to="/guide/students/allocation" title="Guide allocation" description="View assigned guides and review decisions" />

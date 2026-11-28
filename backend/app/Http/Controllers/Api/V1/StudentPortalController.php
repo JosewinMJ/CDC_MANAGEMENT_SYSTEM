@@ -390,6 +390,7 @@ class StudentPortalController extends Controller
             $profile = StudentProfile::where('user_id', $user->id)->first();
             if ($profile) {
                 $query->where(fn ($q) => $q->whereNull('target_student_profile_id')->orWhere('target_student_profile_id', $profile->id));
+                $query->where(fn ($q) => $q->whereNull('target_guide_user_id')->orWhere('target_guide_user_id', $profile->assigned_guide_id));
                 $query->where(fn ($q) => $q->whereNull('target_academic_year')->orWhere('target_academic_year', $profile->academic_year));
                 $list = $query->latest()->get()->filter(function ($n) use ($profile) {
                     $branches = $n->target_branches ?? [];
@@ -419,13 +420,19 @@ class StudentPortalController extends Controller
     {
         $profile = StudentProfile::where('user_id', $request->user()->id)->first();
         $studentKey = $profile ? (string)$profile->id : (string)$request->user()->id;
-        Notice::whereIn('target_portal', ['all', 'student'])->get()->each(function ($notice) use ($studentKey) {
-            $readers = $notice->read_by_student_ids ?? [];
-            if (!in_array($studentKey, $readers, true)) {
-                $readers[] = $studentKey;
-                $notice->update(['read_by_student_ids' => $readers]);
-            }
-        });
+        Notice::whereIn('target_portal', ['all', 'student'])
+            ->when($profile, function ($q) use ($profile) {
+                $q->where(fn ($sub) => $sub->whereNull('target_student_profile_id')->orWhere('target_student_profile_id', $profile->id))
+                    ->where(fn ($sub) => $sub->whereNull('target_guide_user_id')->orWhere('target_guide_user_id', $profile->assigned_guide_id));
+            })
+            ->get()
+            ->each(function ($notice) use ($studentKey) {
+                $readers = $notice->read_by_student_ids ?? [];
+                if (!in_array($studentKey, $readers, true)) {
+                    $readers[] = $studentKey;
+                    $notice->update(['read_by_student_ids' => $readers]);
+                }
+            });
         return response()->json(['ok' => true]);
     }
 
