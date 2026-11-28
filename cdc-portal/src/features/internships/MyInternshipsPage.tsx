@@ -43,7 +43,10 @@ export const MyInternshipsPage: React.FC = () => {
   // Completion Submission Modal States
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
   const [completionCertDoc, setCompletionCertDoc] = useState('');
+  const [completionCertFile, setCompletionCertFile] = useState<File | undefined>();
   const [finalReportDoc, setFinalReportDoc] = useState('');
+  const [finalReportFile, setFinalReportFile] = useState<File | undefined>();
+  const [completing, setCompleting] = useState(false);
 
   const loadData = async () => {
     const list = await internshipService.getInternships();
@@ -87,27 +90,39 @@ export const MyInternshipsPage: React.FC = () => {
 
   const handleCompletionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedInternship) return;
-    if (!completionCertDoc || !finalReportDoc) {
-      showToast({ type: 'error', title: 'Documents Required', message: 'Please upload both completion certificate and final report.' });
+    if (!selectedInternship || completing) return;
+    if (!completionCertFile || !finalReportFile) {
+      showToast({ type: 'error', title: 'Documents Required', message: 'Please upload both completion certificate and final report PDFs.' });
       return;
     }
 
-    await internshipService.submitCompletion(
-      selectedInternship.id,
-      completionCertDoc,
-      finalReportDoc
-    );
+    setCompleting(true);
+    try {
+      const updated = await internshipService.submitCompletion(
+        selectedInternship.id,
+        completionCertFile,
+        finalReportFile
+      );
 
-    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    showToast({
-      type: 'success',
-      title: 'Completion Report Submitted',
-      message: 'Internship status updated to COMPLETED. Credits will be registered.',
-    });
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      showToast({
+        type: 'success',
+        title: 'Completion Report Submitted',
+        message: 'Internship status updated to COMPLETED in MySQL.',
+      });
 
-    setIsCompletionModalOpen(false);
-    loadData();
+      setSelectedInternship(updated);
+      setCompletionCertDoc('');
+      setCompletionCertFile(undefined);
+      setFinalReportDoc('');
+      setFinalReportFile(undefined);
+      setIsCompletionModalOpen(false);
+      await loadData();
+    } catch (err) {
+      showToast({ type: 'error', title: 'Submission Failed', message: err instanceof Error ? err.message : 'Unable to submit completion evidence.' });
+    } finally {
+      setCompleting(false);
+    }
   };
 
   return (
@@ -293,15 +308,15 @@ export const MyInternshipsPage: React.FC = () => {
 
           <FileUploader
             label="1. Official Internship Completion Certificate (Mandatory):"
-            helperText="PDF up to 5MB"
-            onFileSelect={setCompletionCertDoc}
+            helperText="PDF/DOCX up to 5MB"
+            onFileSelect={(name, file) => { setCompletionCertDoc(name); setCompletionCertFile(file); }}
             selectedFileName={completionCertDoc}
           />
 
           <FileUploader
             label="2. Final Internship Technical Report (Mandatory):"
-            helperText="PDF up to 10MB formatted according to CDC academic project guidelines"
-            onFileSelect={setFinalReportDoc}
+            helperText="PDF/DOCX up to 5MB formatted according to CDC academic project guidelines"
+            onFileSelect={(name, file) => { setFinalReportDoc(name); setFinalReportFile(file); }}
             selectedFileName={finalReportDoc}
           />
 
@@ -315,9 +330,10 @@ export const MyInternshipsPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition"
+              disabled={completing}
+              className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition disabled:opacity-50"
             >
-              Submit Evidence & Complete Track
+              {completing ? 'Uploading...' : 'Submit Evidence & Complete Track'}
             </button>
           </div>
         </form>

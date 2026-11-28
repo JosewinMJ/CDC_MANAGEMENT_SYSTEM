@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { noticeService } from '../../services/noticeService';
 import { studentService } from '../../services/studentService';
+import { apiRequest } from '../../services/apiClient';
 import { subscribeToStore } from '../../services/storeEvents';
 import { Notice, NoticeCategory, NoticePriority } from '../../shared/types';
 import { formatDateTime } from '../../shared/utils';
@@ -21,6 +22,7 @@ import { useNotification } from '../../context/NotificationContext';
 
 export const NoticesPage: React.FC = () => {
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [guideRequests, setGuideRequests] = useState<any[]>([]);
   const [currentStudentId, setCurrentStudentId] = useState('');
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<NoticeCategory>(NoticeCategory.ALL);
@@ -29,12 +31,14 @@ export const NoticesPage: React.FC = () => {
   const { showToast } = useNotification();
 
   const loadNotices = async () => {
-    const [list, profile] = await Promise.all([
+    const [list, profile, reqs] = await Promise.all([
       noticeService.getNotices(),
       studentService.getStudentProfile(),
+      apiRequest<any[]>('/students/me/mentoring-requests', { portal: 'student' }).catch(() => []),
     ]);
     setCurrentStudentId(profile.id);
     setNotices(list);
+    setGuideRequests(reqs);
     if (!selectedNotice && list.length > 0) {
       setSelectedNotice(list[0]);
     }
@@ -102,6 +106,25 @@ export const NoticesPage: React.FC = () => {
           </button>
         )}
       </div>
+
+      {guideRequests.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+          <div className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+            Faculty Guide Action / Update Requests ({guideRequests.length})
+          </div>
+          <div className="space-y-2">
+            {guideRequests.map(req => (
+              <div key={req.id} className="bg-white rounded-xl border border-amber-200 p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="font-bold text-[#142B4A]">{req.author_name}:</span>{' '}
+                  <span className="text-slate-700">{req.remark}</span>
+                </div>
+                <span className="text-[10px] text-slate-400 shrink-0">{formatDateTime(req.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col md:flex-row items-center gap-3">

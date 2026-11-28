@@ -130,6 +130,8 @@ interface GuideNotice {
   content: string;
   publisher_name: string;
   priority: string;
+  read_count?: number;
+  target_student_profile_id?: number | null;
   created_at: string;
 }
 
@@ -139,13 +141,15 @@ export function Feedback({ error, success }: { error?: string; success?: string 
   return null;
 }
 
-export function GuideNotices() {
+export function GuideNotices({ mentees = [] }: { mentees?: Array<{ id: number; reg_number: string; user: { name: string } }> }) {
   const [notices, setNotices] = useState<GuideNotice[] | null>(null);
+  const [sentNotices, setSentNotices] = useState<GuideNotice[]>([]);
   const [loadError, setLoadError] = useState('');
   const [retry, setRetry] = useState(0);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [priority, setPriority] = useState('Normal');
+  const [targetStudentId, setTargetStudentId] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [feedback, setFeedback] = useState<{ error?: string; success?: string }>({});
 
@@ -154,6 +158,9 @@ export function GuideNotices() {
     apiRequest<GuideNotice[]>('/notices', { ...guide, signal: controller.signal })
       .then(setNotices)
       .catch(error => { if (!controller.signal.aborted) setLoadError(error.message); });
+    apiRequest<GuideNotice[]>('/guide/notices', { ...guide, signal: controller.signal })
+      .then(setSentNotices)
+      .catch(() => {});
     return () => controller.abort();
   }, [retry]);
 
@@ -164,12 +171,19 @@ export function GuideNotices() {
     try {
       await apiRequest('/guide/notices', {
         ...guide, method: 'POST',
-        body: JSON.stringify({ title: title.trim(), content: content.trim(), priority }),
+        body: JSON.stringify({
+          title: title.trim(),
+          content: content.trim(),
+          priority,
+          target_student_profile_id: targetStudentId ? Number(targetStudentId) : null,
+        }),
       });
       setTitle('');
       setContent('');
       setPriority('Normal');
+      setTargetStudentId('');
       setFeedback({ success: 'Notice published to the Student Portal feed.' });
+      setRetry(v => v + 1);
     } catch (error) {
       setFeedback({ error: error instanceof Error ? error.message : 'Unable to publish the notice.' });
     } finally {
@@ -178,10 +192,18 @@ export function GuideNotices() {
   }
 
   return <div className="space-y-4">
-    <PageHeading title="Notices" description="Read announcements for guides and publish updates to the Student Portal." />
+    <PageHeading title="Notices" description="Read announcements for guides and publish updates to all or specific assigned students." />
     <div className="grid items-start gap-4 lg:grid-cols-2">
       <form onSubmit={publish} className={`${card} space-y-4 p-4 sm:p-5`}>
         <h2 className="font-bold text-[#142B4A]">Publish guide notice</h2>
+        <label className="block space-y-1 text-sm font-semibold">Recipients
+          <select className={field} value={targetStudentId} onChange={e => setTargetStudentId(e.target.value)}>
+            <option value="">All Assigned Students</option>
+            {mentees.map(m => (
+              <option key={m.id} value={m.id}>{m.user.name} ({m.reg_number})</option>
+            ))}
+          </select>
+        </label>
         <label className="block space-y-1 text-sm font-semibold">Title
           <input className={field} required maxLength={200} value={title} onChange={e => setTitle(e.target.value)} />
         </label>
@@ -196,20 +218,37 @@ export function GuideNotices() {
         <Feedback {...feedback} />
         <button type="submit" className={primary} disabled={publishing || !title.trim() || !content.trim()}>{publishing ? 'Publishing…' : 'Publish notice'}</button>
       </form>
-      <section className="space-y-3">
-        <h2 className="font-bold text-[#142B4A]">Announcements for guides</h2>
-        {loadError && <div className="space-y-2"><Feedback error={loadError} /><button className={secondary} onClick={() => { setLoadError(''); setRetry(version => version + 1); }}>Retry</button></div>}
-        {notices === null && !loadError && <Empty>Loading announcements…</Empty>}
-        {notices?.length === 0 && <Empty>No announcements yet.</Empty>}
-        {notices?.map(notice => <article className={`${card} space-y-2 p-4`} key={notice.id}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold text-[#142B4A]">{notice.title}</h3>
-            {notice.priority !== 'Normal' && <StatusBadge status={notice.priority} dot={false} />}
-          </div>
-          <p className="text-xs text-slate-600">{notice.publisher_name} · {formatDate(notice.created_at)}</p>
-          <p className="whitespace-pre-wrap wrap-break-word text-sm">{notice.content}</p>
-        </article>)}
-      </section>
+      <div className="space-y-4">
+        <section className="space-y-3">
+          <h2 className="font-bold text-[#142B4A]">Your published notices &amp; read status</h2>
+          {sentNotices.length === 0 ? <Empty>You have not published any guide notices yet.</Empty> : sentNotices.map(n => (
+            <article key={n.id} className={`${card} space-y-1.5 p-4`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-[#142B4A]">{n.title}</h3>
+                <span className="rounded-full bg-[#EAF2FF] px-2 py-0.5 text-xs font-bold text-[#2855A6]">
+                  Read by {n.read_count ?? 0}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600">{formatDate(n.created_at)}{n.target_student_profile_id ? ' · Selected student' : ' · All students'}</p>
+              <p className="text-sm text-slate-700">{n.content}</p>
+            </article>
+          ))}
+        </section>
+        <section className="space-y-3">
+          <h2 className="font-bold text-[#142B4A]">Announcements for guides</h2>
+          {loadError && <div className="space-y-2"><Feedback error={loadError} /><button className={secondary} onClick={() => { setLoadError(''); setRetry(version => version + 1); }}>Retry</button></div>}
+          {notices === null && !loadError && <Empty>Loading announcements…</Empty>}
+          {notices?.length === 0 && <Empty>No announcements yet.</Empty>}
+          {notices?.map(notice => <article className={`${card} space-y-2 p-4`} key={notice.id}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-[#142B4A]">{notice.title}</h3>
+              {notice.priority !== 'Normal' && <StatusBadge status={notice.priority} dot={false} />}
+            </div>
+            <p className="text-xs text-slate-600">{notice.publisher_name} · {formatDate(notice.created_at)}</p>
+            <p className="whitespace-pre-wrap wrap-break-word text-sm">{notice.content}</p>
+          </article>)}
+        </section>
+      </div>
     </div>
   </div>;
 }

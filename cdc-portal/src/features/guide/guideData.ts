@@ -7,10 +7,15 @@ export interface Mentee {
   programme: string;
   semester: number;
   current_cgpa: number;
+  tenth_percentage?: number;
+  twelfth_percentage?: number;
+  active_backlogs?: number;
+  historical_backlogs?: number;
   placement_status: string;
   verification_status: string;
-  user: { name: string; email: string };
+  user: { name: string; email: string; phone?: string };
   assigned_guide?: { name: string } | null;
+  documents?: Array<{ id: number; name: string; category: string; verification_status: string }>;
 }
 
 export interface ReviewStep {

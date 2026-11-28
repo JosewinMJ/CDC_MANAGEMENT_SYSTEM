@@ -15,10 +15,20 @@ import {
   Download,
   Plus,
   Trash2,
+  Edit2,
+  Briefcase,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, downloadApiFile } from '../../services/apiClient';
+import { DocumentDownload } from '../../components/common/DocumentDownload';
+import {
+  AdminEligibilityModal,
+  AdminFacultyRosterModal,
+  AdminGovernanceTab,
+  AdminReportsPanel,
+  AdminStudentEditModal,
+} from './AdminGovernancePanels';
 
 interface AdminDashboardResp {
   kpis: {
@@ -30,12 +40,18 @@ interface AdminDashboardResp {
     maxLpa: number;
     totalFaculty: number;
     totalCompanies: number;
+    upcomingDrives?: number;
     totalApplications: number;
     pendingCorrections: number;
     pendingInternships: number;
+    pendingDocuments?: number;
+    incompleteProfiles?: number;
+    completedInternships?: number;
+    ppoConversions?: number;
   };
   departmentBreakdown: Array<{ branch: string; total: number; placed: number }>;
   recentAudits: Array<{ id: number; actor_name: string; actor_role: string; action: string; entity_type: string; details: string; created_at: string }>;
+  academicYears?: string[];
 }
 
 export const AdminPortal: React.FC = () => {
@@ -51,22 +67,39 @@ export const AdminPortal: React.FC = () => {
   const [questions, setQuestions] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [audits, setAudits] = useState<{ audits: any[]; syncs: any[] }>({ audits: [], syncs: [] });
+  const [adminNotices, setAdminNotices] = useState<any[]>([]);
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [academicYear, setAcademicYear] = useState('2026-2027');
 
-  const [newStu, setNewStu] = useState({ reg_number: '', name: '', email: '', branch: 'CSE', current_cgpa: '8.20', active_backlogs: '0' });
+  // Filter & Modal States
+  const [studentQuery, setStudentQuery] = useState('');
+  const [studentBranchFilter, setStudentBranchFilter] = useState('ALL');
+  const [editingStudent, setEditingStudent] = useState<any | null>(null);
+  const [rosterFaculty, setRosterFaculty] = useState<any | null>(null);
+  const [eligibilityCompanyId, setEligibilityCompanyId] = useState<number | null>(null);
+  const [internshipTab, setInternshipTab] = useState('PENDING_CDC_APPROVAL');
+  const [addingRoleForCompanyId, setAddingRoleForCompanyId] = useState<number | null>(null);
+  const [extraRole, setExtraRole] = useState({ role_title: '', job_type: 'Full-time', package_lpa: '10.0', stipend: '', min_cgpa: '7.5' });
+
+  const [newStu, setNewStu] = useState({ reg_number: '', name: '', email: '', branch: 'CSE', current_cgpa: '8.20', active_backlogs: '0', assigned_guide_id: '' });
   const [newFac, setNewFac] = useState({ employee_id: '', name: '', email: '', department: 'CSE', designation: 'Assistant Professor', coordinator_role: 'faculty_guide' });
-  const [newComp, setNewComp] = useState({ name: '', industry: 'Cloud & AI', tier: 'dream', role_title: 'Software Engineer', package_lpa: '12.00', min_cgpa: '7.5', application_deadline: '2026-12-20' });
+  const [newComp, setNewComp] = useState({ name: '', industry: 'Cloud & AI', tier: 'dream', role_title: 'Software Engineer', job_type: 'Full-time', package_lpa: '12.00', stipend: '', min_cgpa: '7.5', min_tenth: '70', min_twelfth: '70', max_backlogs: '0', branches: 'CSE,IT,AIML,ECE', application_deadline: '2026-12-20' });
   const [newQ, setNewQ] = useState({ title: '', leetcodeUrl: '', difficulty: 'Easy', dueDate: '2026-12-05' });
   const [importScope, setImportScope] = useState<'auto' | 'students' | 'faculty' | 'companies'>('auto');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [fallbackPass, setFallbackPass] = useState('Portal@1234');
-  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', priority: 'High', target_portal: 'all' });
+  const [noticeForm, setNoticeForm] = useState({ title: '', content: '', priority: 'High', category: 'Placement', target_portal: 'all', target_academic_year: '', target_student_profile_id: '', expiry_date: '', attachment_name: '' });
 
-  const loadAll = async () => {
+  const loadAll = async (yearParam = academicYear, stuSearch = studentQuery, stuBranch = studentBranchFilter) => {
     try {
-      const [d, s, f, c, a, corr, intern, qs, lb, aud] = await Promise.all([
-        apiRequest<AdminDashboardResp>('/admin/dashboard', { portal: 'admin' }),
-        apiRequest<any[]>('/admin/students', { portal: 'admin' }),
+      const qsStudents = new URLSearchParams();
+      if (stuSearch.trim()) qsStudents.set('q', stuSearch.trim());
+      if (stuBranch !== 'ALL') qsStudents.set('branch', stuBranch);
+      if (yearParam !== 'ALL') qsStudents.set('academic_year', yearParam);
+
+      const [d, s, f, c, a, corr, intern, qs, lb, aud, nts] = await Promise.all([
+        apiRequest<AdminDashboardResp>(`/admin/dashboard?academic_year=${encodeURIComponent(yearParam)}`, { portal: 'admin' }),
+        apiRequest<any[]>(`/admin/students?${qsStudents.toString()}`, { portal: 'admin' }),
         apiRequest<any[]>('/admin/faculty', { portal: 'admin' }),
         apiRequest<any[]>('/companies', { portal: 'admin' }),
         apiRequest<any[]>('/admin/applications', { portal: 'admin' }),
@@ -75,6 +108,7 @@ export const AdminPortal: React.FC = () => {
         apiRequest<any[]>('/coding-challenge/questions', { portal: 'admin' }),
         apiRequest<any[]>('/coding-challenge/leaderboard', { portal: 'admin' }),
         apiRequest<{ audits: any[]; syncs: any[] }>('/admin/audit-logs', { portal: 'admin' }),
+        apiRequest<any[]>('/admin/notices', { portal: 'admin' }),
       ]);
       setDash(d);
       setStudents(s);
@@ -86,14 +120,15 @@ export const AdminPortal: React.FC = () => {
       setQuestions(qs);
       setLeaderboard(lb);
       setAudits(aud);
+      setAdminNotices(nts);
     } catch (e) {
       setStatusMsg({ type: 'err', text: e instanceof Error ? e.message : 'Unable to load Admin data.' });
     }
   };
 
   useEffect(() => {
-    loadAll();
-  }, []);
+    loadAll(academicYear, studentQuery, studentBranchFilter);
+  }, [academicYear, studentBranchFilter]);
 
   const handleLogout = async () => {
     await logoutFromPortal('admin');
@@ -110,9 +145,10 @@ export const AdminPortal: React.FC = () => {
           ...newStu,
           current_cgpa: parseFloat(newStu.current_cgpa),
           active_backlogs: parseInt(newStu.active_backlogs, 10),
+          assigned_guide_id: newStu.assigned_guide_id ? Number(newStu.assigned_guide_id) : null,
         }),
       });
-      setNewStu({ reg_number: '', name: '', email: '', branch: 'CSE', current_cgpa: '8.20', active_backlogs: '0' });
+      setNewStu({ reg_number: '', name: '', email: '', branch: 'CSE', current_cgpa: '8.20', active_backlogs: '0', assigned_guide_id: '' });
       setStatusMsg({ type: 'ok', text: 'Student added to MySQL Student DB.' });
       await loadAll();
     } catch (err) {
@@ -145,21 +181,54 @@ export const AdminPortal: React.FC = () => {
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const branches = newComp.branches.split(',').map(b => b.trim().toUpperCase()).filter(Boolean);
       await apiRequest('/admin/companies', {
         method: 'POST',
         portal: 'admin',
         body: JSON.stringify({
-          ...newComp,
+          name: newComp.name,
+          industry: newComp.industry,
+          tier: newComp.tier,
+          role_title: newComp.role_title,
+          job_type: newComp.job_type,
           package_lpa: parseFloat(newComp.package_lpa),
+          stipend: newComp.stipend || null,
           min_cgpa: parseFloat(newComp.min_cgpa),
-          allowed_branches: ['CSE', 'IT', 'AIML', 'ECE'],
+          min_tenth: parseFloat(newComp.min_tenth),
+          min_twelfth: parseFloat(newComp.min_twelfth),
+          max_backlogs: parseInt(newComp.max_backlogs, 10),
+          allowed_branches: branches.length ? branches : ['CSE', 'IT'],
+          application_deadline: newComp.application_deadline,
+          academic_year: academicYear === 'ALL' ? '2026-2027' : academicYear,
         }),
       });
-      setNewComp({ name: '', industry: 'Cloud & AI', tier: 'dream', role_title: 'Software Engineer', package_lpa: '12.00', min_cgpa: '7.5', application_deadline: '2026-12-20' });
+      setNewComp({ name: '', industry: 'Cloud & AI', tier: 'dream', role_title: 'Software Engineer', job_type: 'Full-time', package_lpa: '12.00', stipend: '', min_cgpa: '7.5', min_tenth: '70', min_twelfth: '70', max_backlogs: '0', branches: 'CSE,IT,AIML,ECE', application_deadline: '2026-12-20' });
       setStatusMsg({ type: 'ok', text: 'Company & Job Role published across all 3 portals.' });
       await loadAll();
     } catch (err) {
       setStatusMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to create drive' });
+    }
+  };
+
+  const handleAddRoleToCompany = async (companyId: number) => {
+    try {
+      await apiRequest(`/admin/companies/${companyId}/roles`, {
+        method: 'POST',
+        portal: 'admin',
+        body: JSON.stringify({
+          role_title: extraRole.role_title,
+          job_type: extraRole.job_type,
+          package_lpa: parseFloat(extraRole.package_lpa),
+          stipend: extraRole.stipend || null,
+          min_cgpa: parseFloat(extraRole.min_cgpa),
+        }),
+      });
+      setAddingRoleForCompanyId(null);
+      setExtraRole({ role_title: '', job_type: 'Full-time', package_lpa: '10.0', stipend: '', min_cgpa: '7.5' });
+      setStatusMsg({ type: 'ok', text: 'Additional job role added to company drive.' });
+      await loadAll();
+    } catch (err) {
+      setStatusMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to add role' });
     }
   };
 
@@ -248,8 +317,22 @@ export const AdminPortal: React.FC = () => {
   const handlePublishNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiRequest('/admin/notices', { method: 'POST', portal: 'admin', body: JSON.stringify(noticeForm) });
-      setNoticeForm({ title: '', content: '', priority: 'High', target_portal: 'all' });
+      await apiRequest('/admin/notices', {
+        method: 'POST',
+        portal: 'admin',
+        body: JSON.stringify({
+          title: noticeForm.title,
+          content: noticeForm.content,
+          priority: noticeForm.priority,
+          category: noticeForm.category,
+          target_portal: noticeForm.target_portal,
+          target_academic_year: noticeForm.target_academic_year || null,
+          target_student_profile_id: noticeForm.target_student_profile_id ? Number(noticeForm.target_student_profile_id) : null,
+          expiry_date: noticeForm.expiry_date || null,
+          attachment_name: noticeForm.attachment_name || null,
+        }),
+      });
+      setNoticeForm({ title: '', content: '', priority: 'High', category: 'Placement', target_portal: 'all', target_academic_year: '', target_student_profile_id: '', expiry_date: '', attachment_name: '' });
       setStatusMsg({ type: 'ok', text: 'Institutional notice broadcasted.' });
       await loadAll();
     } catch (err) {
@@ -275,7 +358,8 @@ export const AdminPortal: React.FC = () => {
             { to: '/admin/faculty', label: 'Faculty & Guides DB', icon: Users },
             { to: '/admin/drives', label: 'Companies & Drives', icon: Building2 },
             { to: '/admin/coding', label: 'Daily Coding Challenge', icon: Terminal },
-            { to: '/admin/internships', label: 'Approvals & Corrections', icon: ClipboardCheck },
+            { to: '/admin/internships', label: 'Approvals & Notices', icon: ClipboardCheck },
+            { to: '/admin/governance', label: 'MOU, Consultancy & Roles', icon: Briefcase },
             { to: '/admin/data-exchange', label: 'Excel / CSV Auto-Sync', icon: FileSpreadsheet },
             { to: '/admin/audit', label: 'Audit Logs & Backup', icon: ShieldCheck },
           ].map(item => {
@@ -303,6 +387,24 @@ export const AdminPortal: React.FC = () => {
       </aside>
 
       <main className="flex-1 p-6 lg:p-8 space-y-6 overflow-y-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-xl border border-slate-200 px-4 py-2.5 text-xs">
+          <div className="font-semibold text-slate-600">
+            Session Scope: <strong className="text-[#142B4A]">{academicYear === 'ALL' ? 'All Historical Sessions' : academicYear}</strong>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-semibold">Academic Year:</span>
+            <select
+              value={academicYear}
+              onChange={e => setAcademicYear(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 font-bold text-[#142B4A]"
+            >
+              {(dash?.academicYears || ['ALL', '2024-2025', '2025-2026', '2026-2027']).map(y => (
+                <option key={y} value={y}>{y === 'ALL' ? 'All Academic Years' : y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {statusMsg && (
           <div className={`rounded-xl border px-4 py-3 text-xs font-semibold ${statusMsg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
             {statusMsg.text}
@@ -338,6 +440,21 @@ export const AdminPortal: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 flex justify-between items-center">
+                    <span className="font-semibold text-slate-600">Upcoming Recruitment Drives</span>
+                    <strong className="text-lg text-[#2855A6]">{dash?.kpis.upcomingDrives ?? 0}</strong>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 flex justify-between items-center">
+                    <span className="font-semibold text-slate-600">Incomplete Profiles / Missing Resume</span>
+                    <strong className="text-lg text-amber-600">{dash?.kpis.incompleteProfiles ?? 0}</strong>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 flex justify-between items-center">
+                    <span className="font-semibold text-slate-600">Pending Document Verifications</span>
+                    <strong className="text-lg text-rose-600">{dash?.kpis.pendingDocuments ?? 0}</strong>
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <h2 className="text-sm font-bold text-[#142B4A] mb-4">Department-wise Placement Analytics</h2>
                   <div className="h-64">
@@ -353,6 +470,8 @@ export const AdminPortal: React.FC = () => {
                     </ResponsiveContainer>
                   </div>
                 </div>
+
+                <AdminReportsPanel year={academicYear} />
               </div>
             }
           />
@@ -361,7 +480,7 @@ export const AdminPortal: React.FC = () => {
             path="students"
             element={
               <div className="space-y-6">
-                <form onSubmit={handleCreateStudent} className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end text-xs">
+                <form onSubmit={handleCreateStudent} className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-7 gap-3 items-end text-xs">
                   <div>
                     <label className="block font-semibold text-slate-600 mb-1">Reg Number *</label>
                     <input required value={newStu.reg_number} onChange={e => setNewStu({ ...newStu, reg_number: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-300" placeholder="21BCE1099" />
@@ -382,10 +501,36 @@ export const AdminPortal: React.FC = () => {
                     <label className="block font-semibold text-slate-600 mb-1">CGPA</label>
                     <input type="number" step="0.01" value={newStu.current_cgpa} onChange={e => setNewStu({ ...newStu, current_cgpa: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-300" />
                   </div>
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Assign Guide</label>
+                    <select value={newStu.assigned_guide_id} onChange={e => setNewStu({ ...newStu, assigned_guide_id: e.target.value })} className="w-full px-2 py-2 rounded-lg border border-slate-300 bg-white">
+                      <option value="">-- Optional --</option>
+                      {faculty.map(f => <option key={f.user_id} value={f.user_id}>{f.user?.name}</option>)}
+                    </select>
+                  </div>
                   <button type="submit" className="inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg bg-[#2855A6] text-white font-semibold">
                     <Plus className="w-3.5 h-3.5" /> Add Student
                   </button>
                 </form>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-center text-xs">
+                  <input
+                    value={studentQuery}
+                    onChange={e => setStudentQuery(e.target.value)}
+                    placeholder="Search reg number, name, or email..."
+                    className="flex-1 min-w-48 px-3 py-2 rounded-lg border border-slate-300"
+                  />
+                  <select value={studentBranchFilter} onChange={e => setStudentBranchFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-300 bg-white font-semibold">
+                    <option value="ALL">All Branches</option>
+                    <option value="CSE">CSE</option>
+                    <option value="IT">IT</option>
+                    <option value="AIML">AIML</option>
+                    <option value="ECE">ECE</option>
+                  </select>
+                  <button type="button" onClick={() => loadAll(academicYear, studentQuery, studentBranchFilter)} className="px-4 py-2 rounded-lg bg-[#142B4A] text-white font-semibold">
+                    Search
+                  </button>
+                </div>
 
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                   <table className="w-full text-xs text-left">
@@ -395,7 +540,7 @@ export const AdminPortal: React.FC = () => {
                         <th className="px-4 py-3">Branch / Year</th>
                         <th className="px-4 py-3">CGPA</th>
                         <th className="px-4 py-3">Guide</th>
-                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Status / Docs</th>
                         <th className="px-4 py-3 text-right">Action</th>
                       </tr>
                     </thead>
@@ -403,11 +548,17 @@ export const AdminPortal: React.FC = () => {
                       {students.map(s => (
                         <tr key={s.id}>
                           <td className="px-4 py-3 font-semibold">{s.user?.name} <span className="font-normal text-slate-500">({s.reg_number})</span><div className="text-[11px] font-normal text-slate-400">{s.user?.email}</div></td>
-                          <td className="px-4 py-3">{s.branch} &middot; {s.graduation_year}</td>
+                          <td className="px-4 py-3">{s.branch} &middot; {s.academic_year || s.graduation_year}</td>
                           <td className="px-4 py-3 font-bold">{s.current_cgpa}</td>
-                          <td className="px-4 py-3">{s.assigned_guide?.name || 'Unassigned'}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#2855A6] font-semibold uppercase">{s.placement_status}</span></td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3">{s.assigned_guide?.name || <span className="text-amber-600 font-semibold">Unassigned</span>}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#2855A6] font-semibold uppercase">{s.placement_status}</span>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{s.verification_status} &middot; {(s.documents || []).length} doc(s)</div>
+                          </td>
+                          <td className="px-4 py-3 text-right space-x-1.5">
+                            <button onClick={() => setEditingStudent(s)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#EAF2FF] text-[#2855A6] font-semibold">
+                              <Edit2 className="w-3 h-3" /> Edit / Guide
+                            </button>
                             <button onClick={() => handleDeleteStudent(s.id)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-50 text-rose-700 font-semibold">
                               <Trash2 className="w-3 h-3" /> Archive
                             </button>
@@ -441,15 +592,40 @@ export const AdminPortal: React.FC = () => {
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-50 uppercase text-slate-500">
-                      <tr><th className="px-4 py-3">Faculty</th><th className="px-4 py-3">Emp ID</th><th className="px-4 py-3">Dept</th><th className="px-4 py-3">Role</th></tr>
+                      <tr><th className="px-4 py-3">Faculty</th><th className="px-4 py-3">Emp ID / Dept</th><th className="px-4 py-3">Assigned Mentees</th><th className="px-4 py-3">Permissions</th><th className="px-4 py-3">Status</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {faculty.map(f => (
                         <tr key={f.id}>
                           <td className="px-4 py-3 font-semibold">{f.user?.name}<div className="text-[11px] font-normal text-slate-400">{f.user?.email}</div></td>
-                          <td className="px-4 py-3">{f.employee_id}</td>
-                          <td className="px-4 py-3">{f.user?.department}</td>
-                          <td className="px-4 py-3 uppercase font-semibold text-purple-700">{f.coordinator_role}</td>
+                          <td className="px-4 py-3">{f.employee_id} &middot; {f.user?.department}</td>
+                          <td className="px-4 py-3">
+                            <button onClick={() => setRosterFaculty(f)} className="px-2.5 py-1 rounded bg-[#EAF2FF] text-[#2855A6] font-bold">
+                              {(f.user?.mentored_students || []).length} Students
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 space-x-3">
+                            <label className="inline-flex items-center gap-1">
+                              <input type="checkbox" checked={Boolean(f.can_manage_drives)} onChange={async e => {
+                                await apiRequest(`/admin/faculty/${f.id}`, { method: 'PATCH', portal: 'admin', body: JSON.stringify({ can_manage_drives: e.target.checked }) });
+                                loadAll();
+                              }} /> Drives
+                            </label>
+                            <label className="inline-flex items-center gap-1">
+                              <input type="checkbox" checked={Boolean(f.can_verify_students)} onChange={async e => {
+                                await apiRequest(`/admin/faculty/${f.id}`, { method: 'PATCH', portal: 'admin', body: JSON.stringify({ can_verify_students: e.target.checked }) });
+                                loadAll();
+                              }} /> Verify Docs
+                            </label>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button onClick={async () => {
+                              await apiRequest(`/admin/faculty/${f.id}`, { method: 'PATCH', portal: 'admin', body: JSON.stringify({ portal_active: !f.portal_active }) });
+                              loadAll();
+                            }} className={`px-2 py-0.5 rounded font-semibold ${f.portal_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                              {f.portal_active ? 'Active' : 'Disabled'}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -463,27 +639,79 @@ export const AdminPortal: React.FC = () => {
             path="drives"
             element={
               <div className="space-y-6">
-                <form onSubmit={handleCreateCompany} className="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end text-xs">
-                  <input required placeholder="Company Name" value={newComp.name} onChange={e => setNewComp({ ...newComp, name: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
-                  <input required placeholder="Job Role Title" value={newComp.role_title} onChange={e => setNewComp({ ...newComp, role_title: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
-                  <input type="number" step="0.01" required placeholder="CTC LPA" value={newComp.package_lpa} onChange={e => setNewComp({ ...newComp, package_lpa: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
-                  <input type="number" step="0.01" required placeholder="Min CGPA" value={newComp.min_cgpa} onChange={e => setNewComp({ ...newComp, min_cgpa: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
-                  <input type="date" required value={newComp.application_deadline} onChange={e => setNewComp({ ...newComp, application_deadline: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
-                  <button type="submit" className="py-2 px-3 rounded-lg bg-[#2855A6] text-white font-semibold">+ Publish Drive</button>
+                <form onSubmit={handleCreateCompany} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 text-xs">
+                  <div className="font-bold text-sm text-[#142B4A]">Publish Company &amp; Eligibility Criteria</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
+                    <input required placeholder="Company Name" value={newComp.name} onChange={e => setNewComp({ ...newComp, name: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input required placeholder="Job Role Title" value={newComp.role_title} onChange={e => setNewComp({ ...newComp, role_title: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <select value={newComp.job_type} onChange={e => setNewComp({ ...newComp, job_type: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                      <option value="Full-time">Full-time</option>
+                      <option value="Internship">Internship</option>
+                      <option value="Internship + Full-time">Internship + Full-time</option>
+                    </select>
+                    <input type="number" step="0.01" required placeholder="CTC LPA" value={newComp.package_lpa} onChange={e => setNewComp({ ...newComp, package_lpa: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input placeholder="Stipend (optional)" value={newComp.stipend} onChange={e => setNewComp({ ...newComp, stipend: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input type="date" required value={newComp.application_deadline} onChange={e => setNewComp({ ...newComp, application_deadline: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 items-center">
+                    <input type="number" step="0.01" required placeholder="Min CGPA" value={newComp.min_cgpa} onChange={e => setNewComp({ ...newComp, min_cgpa: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input type="number" placeholder="Min 10th %" value={newComp.min_tenth} onChange={e => setNewComp({ ...newComp, min_tenth: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input type="number" placeholder="Min 12th %" value={newComp.min_twelfth} onChange={e => setNewComp({ ...newComp, min_twelfth: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input type="number" placeholder="Max Backlogs" value={newComp.max_backlogs} onChange={e => setNewComp({ ...newComp, max_backlogs: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <input placeholder="Branches (CSE,IT,ECE)" value={newComp.branches} onChange={e => setNewComp({ ...newComp, branches: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    <button type="submit" className="py-2 px-3 rounded-lg bg-[#2855A6] text-white font-semibold">+ Publish Drive</button>
+                  </div>
                 </form>
 
                 <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
                   <h3 className="text-sm font-bold text-[#142B4A]">Active Companies &amp; Roles ({companies.length})</h3>
                   <div className="grid md:grid-cols-2 gap-3 text-xs">
                     {companies.map(c => (
-                      <div key={c.id} className="border border-slate-200 rounded-xl p-4">
-                        <div className="font-bold text-sm text-[#142B4A]">{c.name} <span className="text-[11px] font-semibold uppercase text-purple-700 ml-1">({c.tier})</span></div>
-                        <div className="text-slate-500">{c.industry} &middot; Deadline: {c.application_deadline}</div>
-                        <div className="mt-2 space-y-1">
+                      <div key={c.id} className="border border-slate-200 rounded-xl p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-sm text-[#142B4A]">{c.name} <span className="text-[11px] font-semibold uppercase text-purple-700 ml-1">({c.tier})</span></div>
+                            <div className="text-slate-500">{c.industry} &middot; Deadline: {c.application_deadline}</div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => setEligibilityCompanyId(c.id)} className="px-2 py-1 rounded bg-[#EAF2FF] text-[#2855A6] font-semibold">Eligibility</button>
+                            <button onClick={() => setAddingRoleForCompanyId(addingRoleForCompanyId === c.id ? null : c.id)} className="px-2 py-1 rounded bg-slate-100 font-semibold">+ Role</button>
+                          </div>
+                        </div>
+
+                        {addingRoleForCompanyId === c.id && (
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-2 gap-2">
+                            <input placeholder="Role Title" value={extraRole.role_title} onChange={e => setExtraRole({ ...extraRole, role_title: e.target.value })} className="px-2 py-1.5 rounded border border-slate-300 bg-white" />
+                            <input type="number" step="0.1" placeholder="LPA" value={extraRole.package_lpa} onChange={e => setExtraRole({ ...extraRole, package_lpa: e.target.value })} className="px-2 py-1.5 rounded border border-slate-300 bg-white" />
+                            <select value={extraRole.job_type} onChange={e => setExtraRole({ ...extraRole, job_type: e.target.value })} className="px-2 py-1.5 rounded border border-slate-300 bg-white">
+                              <option value="Full-time">Full-time</option>
+                              <option value="Internship">Internship</option>
+                              <option value="Internship + Full-time">Internship + Full-time</option>
+                            </select>
+                            <button onClick={() => handleAddRoleToCompany(c.id)} className="px-2 py-1.5 rounded bg-[#2855A6] text-white font-semibold">Save Role</button>
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
                           {(c.roles || []).map((r: any) => (
-                            <div key={r.id} className="bg-slate-50 px-2.5 py-1.5 rounded flex justify-between">
-                              <span className="font-semibold">{r.role_title}</span>
-                              <span className="text-[#2855A6] font-bold">{r.package_ctc}</span>
+                            <div key={r.id} className="bg-slate-50 px-2.5 py-1.5 rounded flex justify-between items-center gap-2">
+                              <div>
+                                <span className="font-semibold">{r.role_title}</span>{' '}
+                                <span className="text-[10px] text-slate-500">({r.job_type})</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[#2855A6] font-bold">{r.stipend || r.package_ctc}</span>
+                                <button
+                                  onClick={async () => {
+                                    const nextStatus = r.status === 'open' ? 'closed' : 'open';
+                                    await apiRequest(`/admin/job-roles/${r.id}`, { method: 'PATCH', portal: 'admin', body: JSON.stringify({ status: nextStatus }) });
+                                    loadAll();
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}
+                                >
+                                  {r.status}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -587,23 +815,140 @@ export const AdminPortal: React.FC = () => {
                   {corrections.length === 0 && <p className="text-xs text-slate-400">No academic correction tickets.</p>}
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-                  <h2 className="text-sm font-bold text-[#142B4A]">CDC Coordinator Final Internship Approvals</h2>
-                  {internships.filter(it => ['GUIDE_APPROVED', 'PENDING_CDC_APPROVAL'].includes(it.status)).map(it => (
-                    <div key={it.id} className="border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-                      <div>
-                        <div className="font-bold text-[#142B4A]">{it.company_name} — {it.job_role} ({it.track})</div>
-                        <div className="text-slate-600">{it.student_profile?.user?.name} &middot; Guide: {it.faculty_guide?.name} &middot; Status: <strong>{it.status}</strong></div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleFinalInternship(it.id, 'APPROVED')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold">Final Approve</button>
-                        <button onClick={() => handleFinalInternship(it.id, 'REJECTED')} className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 font-semibold">Reject</button>
-                      </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold text-[#142B4A]">CDC Internship Coordination &amp; Approvals</h2>
+                    <div className="flex flex-wrap gap-1.5 text-xs">
+                      {[
+                        { id: 'PENDING_CDC_APPROVAL', label: 'Awaiting Coordinator' },
+                        { id: 'PENDING_GUIDE_REVIEW', label: 'Awaiting Guide' },
+                        { id: 'APPROVED', label: 'Approved' },
+                        { id: 'COMPLETED', label: 'Completed' },
+                        { id: 'REJECTED', label: 'Rejected' },
+                        { id: 'ALL', label: 'All' },
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setInternshipTab(tab.id)}
+                          className={`px-2.5 py-1 rounded-full font-semibold ${internshipTab === tab.id ? 'bg-[#142B4A] text-white' : 'bg-slate-100 text-slate-600'}`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  {internships
+                    .filter(it => internshipTab === 'ALL' || it.status === internshipTab || (internshipTab === 'PENDING_CDC_APPROVAL' && it.status === 'GUIDE_APPROVED'))
+                    .map(it => {
+                      const guideStep = (it.steps || []).find((st: any) => Number(st.stepNumber) === 2);
+                      return (
+                        <div key={it.id} className="border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div>
+                              <div className="font-bold text-[#142B4A]">{it.company_name} — {it.job_role} ({it.track})</div>
+                              <div className="text-slate-600">
+                                {it.student_profile?.user?.name} ({it.student_profile?.reg_number}) &middot; Guide: {it.faculty_guide?.name || 'Unassigned'} &middot; Status: <strong>{it.status}</strong>
+                              </div>
+                              {guideStep?.remarks && (
+                                <div className="text-slate-600 mt-1 bg-slate-50 p-2 rounded border border-slate-200">
+                                  <strong>Guide Remarks:</strong> {guideStep.remarks}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {['GUIDE_APPROVED', 'PENDING_CDC_APPROVAL'].includes(it.status) && (
+                                <>
+                                  <button onClick={() => handleFinalInternship(it.id, 'APPROVED')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold">Final Approve</button>
+                                  <button onClick={() => handleFinalInternship(it.id, 'REJECTED')} className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 font-semibold">Reject</button>
+                                </>
+                              )}
+                              {['APPROVED', 'IN_PROGRESS', 'COMPLETED'].includes(it.status) && (
+                                <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-800 font-semibold cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(it.ppo_converted)}
+                                    onChange={async e => {
+                                      await apiRequest(`/admin/internships/${it.id}/ppo`, { method: 'PATCH', portal: 'admin', body: JSON.stringify({ ppo_converted: e.target.checked }) });
+                                      loadAll();
+                                    }}
+                                  />
+                                  PPO Converted
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                          {(it.documents || []).length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                              <span className="text-[11px] font-semibold text-slate-500">Documents:</span>
+                              {it.documents.map((doc: any, idx: number) => (
+                                doc.fileUrl ? (
+                                  <DocumentDownload key={doc.id ?? idx} path={doc.fileUrl} name={`${doc.category}: ${doc.name}`} portal="admin" />
+                                ) : (
+                                  <span key={idx} className="text-[11px] text-slate-500">{doc.name}</span>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                  <form onSubmit={handlePublishNotice} className="space-y-3 text-xs">
+                    <div className="font-bold text-sm text-[#142B4A]">Targeted Notice Broadcast</div>
+                    <div className="grid sm:grid-cols-4 gap-3">
+                      <input required placeholder="Notice Title" value={noticeForm.title} onChange={e => setNoticeForm({ ...noticeForm, title: e.target.value })} className="sm:col-span-2 px-3 py-2 rounded-lg border border-slate-300" />
+                      <select value={noticeForm.target_portal} onChange={e => setNoticeForm({ ...noticeForm, target_portal: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                        <option value="all">All 3 Portals</option>
+                        <option value="student">Student Portal</option>
+                        <option value="guide">Guide Portal</option>
+                      </select>
+                      <select value={noticeForm.priority} onChange={e => setNoticeForm({ ...noticeForm, priority: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                        <option value="Normal">Normal Priority</option>
+                        <option value="High">High Priority</option>
+                        <option value="Urgent">Urgent Priority</option>
+                      </select>
+                    </div>
+                    <div className="grid sm:grid-cols-4 gap-3">
+                      <select value={noticeForm.category} onChange={e => setNoticeForm({ ...noticeForm, category: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                        <option value="Placement">Placement</option>
+                        <option value="Internship">Internship</option>
+                        <option value="Deadline">Deadline</option>
+                        <option value="Interview">Interview Schedules</option>
+                        <option value="General">General</option>
+                      </select>
+                      <select value={noticeForm.target_student_profile_id} onChange={e => setNoticeForm({ ...noticeForm, target_student_profile_id: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+                        <option value="">All Students / Broadcast</option>
+                        {students.map(s => <option key={s.id} value={s.id}>{s.user?.name} ({s.reg_number})</option>)}
+                      </select>
+                      <input type="date" value={noticeForm.expiry_date} onChange={e => setNoticeForm({ ...noticeForm, expiry_date: e.target.value })} title="Expiry Date" className="px-3 py-2 rounded-lg border border-slate-300" />
+                      <input placeholder="Attachment Name (optional)" value={noticeForm.attachment_name} onChange={e => setNoticeForm({ ...noticeForm, attachment_name: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300" />
+                    </div>
+                    <textarea rows={2} required placeholder="Notice message..." value={noticeForm.content} onChange={e => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-300" />
+                    <button type="submit" className="px-4 py-2 rounded-lg bg-[#2855A6] text-white font-semibold">Publish Notice</button>
+                  </form>
+
+                  <div className="pt-4 border-t border-slate-200 space-y-2 text-xs">
+                    <div className="font-bold text-sm text-[#142B4A]">Notice History &amp; Read Status ({adminNotices.length})</div>
+                    {adminNotices.map(n => (
+                      <div key={n.id} className="p-3 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-[#142B4A]">{n.title}</span>{' '}
+                          <span className="text-slate-500">({n.target_portal}{n.expiry_date ? ` · Expires ${n.expiry_date}` : ''})</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-[#EAF2FF] text-[#2855A6] font-bold">Read by {n.read_count ?? 0}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             }
+          />
+
+          <Route
+            path="governance"
+            element={<AdminGovernanceTab onStatus={(type, text) => setStatusMsg({ type, text })} />}
           />
 
           <Route
@@ -649,20 +994,6 @@ export const AdminPortal: React.FC = () => {
                     </div>
                   ))}
                 </div>
-
-                <form onSubmit={handlePublishNotice} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 text-xs">
-                  <div className="font-bold text-sm text-[#142B4A]">Broadcast Institutional Notice</div>
-                  <div className="grid sm:grid-cols-3 gap-3">
-                    <input required placeholder="Notice Title" value={noticeForm.title} onChange={e => setNoticeForm({ ...noticeForm, title: e.target.value })} className="sm:col-span-2 px-3 py-2 rounded-lg border border-slate-300" />
-                    <select value={noticeForm.target_portal} onChange={e => setNoticeForm({ ...noticeForm, target_portal: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-300 bg-white">
-                      <option value="all">All 3 Portals</option>
-                      <option value="student">Student Portal</option>
-                      <option value="guide">Guide Portal</option>
-                    </select>
-                  </div>
-                  <textarea rows={2} required placeholder="Notice message..." value={noticeForm.content} onChange={e => setNoticeForm({ ...noticeForm, content: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-300" />
-                  <button type="submit" className="px-4 py-2 rounded-lg bg-[#2855A6] text-white font-semibold">Publish Notice</button>
-                </form>
               </div>
             }
           />
@@ -702,8 +1033,22 @@ export const AdminPortal: React.FC = () => {
               </div>
             }
           />
+
         </Routes>
       </main>
+
+      <AdminStudentEditModal
+        student={editingStudent}
+        faculty={faculty}
+        onClose={() => setEditingStudent(null)}
+        onSaved={() => {
+          setStatusMsg({ type: 'ok', text: 'Student record & guide assignment updated in MySQL.' });
+          loadAll();
+        }}
+        onError={msg => setStatusMsg({ type: 'err', text: msg })}
+      />
+      <AdminEligibilityModal companyId={eligibilityCompanyId} onClose={() => setEligibilityCompanyId(null)} />
+      <AdminFacultyRosterModal faculty={rosterFaculty} onClose={() => setRosterFaculty(null)} />
     </div>
   );
 };

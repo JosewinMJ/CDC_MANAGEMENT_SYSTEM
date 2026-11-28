@@ -261,4 +261,60 @@ class CdcIndustrialApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
     }
+
+    public function test_pdf_gap_features_completion_upload_guide_remarks_and_admin_governance(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $student = User::where('email', 'sneha.r2023@vitstudent.ac.in')->firstOrFail();
+        $guide = User::where('email', 'k.ramanathan@vit.ac.in')->firstOrFail();
+        $admin = User::where('email', 'cdc.admin@vit.ac.in')->firstOrFail();
+
+        // 1. Guide confidential mentoring remark stays hidden from student routes
+        Sanctum::actingAs($guide);
+        $this->getJson("/api/v1/guide/students/{$student->studentProfile->id}")
+            ->assertOk()
+            ->assertJsonPath('student.reg_number', '21BCE1042');
+        $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/remarks", [
+            'remark' => 'Confidential mentor note',
+            'category' => 'mentoring',
+            'is_confidential' => true,
+        ])->assertCreated();
+        $this->postJson("/api/v1/guide/students/{$student->studentProfile->id}/remarks", [
+            'remark' => 'Please upload your updated semester marksheet',
+            'category' => 'profile_update_request',
+            'is_confidential' => false,
+        ])->assertCreated();
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/v1/students/me/mentoring-requests')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonMissing(['remark' => 'Confidential mentor note']);
+
+        // 2. Internship opportunities & completion evidence upload
+        $this->getJson('/api/v1/internships/opportunities')->assertOk();
+        $internship = Internship::where('student_profile_id', $student->studentProfile->id)->firstOrFail();
+        $internship->update(['status' => 'APPROVED']);
+        $pdf = fn (string $name) => \Illuminate\Http\UploadedFile::fake()->createWithContent($name, "%PDF-1.4\nDone");
+        $this->post("/api/v1/internships/{$internship->id}/completion", [
+            'certificate' => $pdf('completion.pdf'),
+            'report' => $pdf('final_report.pdf'),
+        ])->assertOk()->assertJsonPath('status', 'COMPLETED');
+
+        // 3. Admin MOU, Consultancy, Reports & Guide Assignment
+        Sanctum::actingAs($admin);
+        $this->getJson('/api/v1/admin/reports?academic_year=2026-2027')
+            ->assertOk()
+            ->assertJsonPath('internshipSummary.completed', 1);
+        $this->postJson('/api/v1/admin/mous', [
+            'organization_name' => 'TCS Research',
+            'agreement_date' => '2026-08-01',
+            'collaboration_type' => 'Internships',
+        ])->assertCreated();
+        $this->postJson('/api/v1/admin/consultancies', [
+            'industry_partner' => 'Wipro',
+            'project_title' => 'Cloud Audit Automation',
+            'faculty_coordinator' => 'Dr. K. Ramanathan',
+        ])->assertCreated();
+    }
 }

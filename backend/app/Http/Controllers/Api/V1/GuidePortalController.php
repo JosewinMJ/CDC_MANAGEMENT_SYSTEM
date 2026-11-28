@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Internship;
+use App\Models\JobRole;
+use App\Models\MentoringRemark;
 use App\Models\Notice;
 use App\Models\StudentDocument;
 use App\Models\StudentProfile;
 use App\Services\AuditService;
+use App\Services\EligibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +21,16 @@ class GuidePortalController extends Controller
     {
         $user = $request->user();
         $mentees = StudentProfile::query()
-            ->select(['id', 'user_id', 'assigned_guide_id', 'reg_number', 'degree', 'programme', 'branch', 'semester', 'current_cgpa', 'placement_status', 'verification_status'])
-            ->with(['user:id,name,email,phone,department', 'assignedGuide:id,name'])
+            ->select([
+                'id', 'user_id', 'assigned_guide_id', 'reg_number', 'degree', 'programme', 'branch',
+                'semester', 'graduation_year', 'current_cgpa', 'tenth_percentage', 'twelfth_percentage',
+                'active_backlogs', 'historical_backlogs', 'placement_status', 'verification_status', 'academic_year',
+            ])
+            ->with([
+                'user:id,name,email,phone,department',
+                'assignedGuide:id,name',
+                'documents:id,student_profile_id,name,category,verification_status',
+            ])
             ->when(!$user->isAdmin(), fn ($q) => $q->where('assigned_guide_id', $user->id))
             ->get();
 
@@ -41,6 +52,78 @@ class GuidePortalController extends Controller
             'internships' => $pendingInternships,
             'documents' => $pendingDocs,
         ]);
+    }
+
+    public function studentDetail(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        $profile = StudentProfile::with([
+            'user:id,name,email,phone,department,avatar_url',
+            'assignedGuide:id,name,email',
+            'documents',
+            'applications.company:id,name',
+            'applications.jobRole:id,role_title,package_ctc',
+            'internships.facultyGuide:id,name',
+            'corrections',
+            'mentoringRemarks' => fn ($q) => $q->latest(),
+        ])
+            ->when(!$user->isAdmin(), fn ($q) => $q->where('assigned_guide_id', $user->id))
+            ->findOrFail($id);
+
+        $eligibility = JobRole::with('company:id,name,application_deadline')
+            ->get()
+            ->map(function ($role) use ($profile) {
+                $eval = EligibilityService::evaluate($profile, $role);
+                return [
+                    'roleId' => $role->id,
+                    'companyName' => $role->company?->name ?? 'Company',
+                    'roleTitle' => $role->role_title,
+                    'packageCtc' => $role->package_ctc,
+                    'overallStatus' => $eval['overallStatus'],
+                    'summaryReason' => $eval['summaryReason'],
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'student' => $profile,
+            'eligibility' => $eligibility,
+        ]);
+    }
+
+    public function storeRemark(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'remark' => ['required', 'string', 'max:2000'],
+            'category' => ['in:mentoring,profile_update_request,progress'],
+            'is_confidential' => ['boolean'],
+        ]);
+
+        $user = $request->user();
+        $profile = StudentProfile::query()
+            ->when(!$user->isAdmin(), fn ($q) => $q->where('assigned_guide_id', $user->id))
+            ->findOrFail($id);
+
+        $entry = MentoringRemark::create([
+            'student_profile_id' => $profile->id,
+            'author_user_id' => $user->id,
+            'author_name' => $user->name,
+            'author_role' => $user->role,
+            'category' => $data['category'] ?? 'mentoring',
+            'remark' => $data['remark'],
+            'is_confidential' => $data['is_confidential'] ?? true,
+        ]);
+
+        AuditService::log(
+            'ADDED_MENTORING_REMARK',
+            'StudentProfile',
+            (string)$profile->id,
+            ($entry->is_confidential ? 'Confidential note' : 'Student update request') . " for {$profile->reg_number}",
+            null,
+            $request
+        );
+
+        return response()->json($entry, 201);
     }
 
     public function internships(Request $request): JsonResponse
@@ -164,21 +247,42 @@ class GuidePortalController extends Controller
             'title' => ['required', 'string', 'max:200'],
             'content' => ['required', 'string'],
             'priority' => ['in:Normal,High,Urgent'],
+            'target_student_profile_id' => ['nullable', 'integer'],
         ]);
+
+        $user = $request->user();
+        if (!empty($data['target_student_profile_id']) && !$user->isAdmin()) {
+            StudentProfile::where('id', $data['target_student_profile_id'])
+                ->where('assigned_guide_id', $user->id)
+                ->firstOrFail();
+        }
 
         $notice = Notice::create([
             'title' => $data['title'],
             'content' => $data['content'],
-            'publisher_name' => $request->user()->name,
+            'publisher_name' => $user->name,
             'publisher_role' => 'Faculty Guide',
             'category' => 'Guide Instructions',
             'priority' => $data['priority'] ?? 'Normal',
             'is_important' => ($data['priority'] ?? 'Normal') !== 'Normal',
             'target_portal' => 'student',
+            'target_student_profile_id' => $data['target_student_profile_id'] ?? null,
             'read_by_student_ids' => [],
         ]);
 
         AuditService::log('GUIDE_PUBLISHED_NOTICE', 'Notice', (string)$notice->id, $notice->title, null, $request);
         return response()->json($notice, 201);
+    }
+
+    public function myNotices(Request $request): JsonResponse
+    {
+        $list = Notice::where('publisher_name', $request->user()->name)
+            ->latest()
+            ->get()
+            ->map(function ($n) {
+                $n->read_count = count($n->read_by_student_ids ?? []);
+                return $n;
+            });
+        return response()->json($list);
     }
 }

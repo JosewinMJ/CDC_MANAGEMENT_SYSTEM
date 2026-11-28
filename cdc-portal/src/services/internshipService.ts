@@ -83,11 +83,25 @@ export const internshipService = {
     return mapped;
   },
 
+  async getPublishedOpportunities(): Promise<any[]> {
+    return apiRequest<any[]>('/internships/opportunities', { portal: 'student' });
+  },
+
   async submitCompletion(
     internshipId: string,
-    _certName: string,
-    _reportName: string
-  ): Promise<Internship | null> {
-    return this.getInternshipById(internshipId).then(x => x ?? null);
+    certificateFile: File,
+    reportFile: File
+  ): Promise<Internship> {
+    const body = new FormData();
+    body.set('certificate', certificateFile);
+    body.set('report', reportFile);
+    const raw = await apiRequest(`/internships/${internshipId}/completion`, {
+      method: 'POST',
+      portal: 'student',
+      body,
+    });
+    const mapped = mapInternship(raw);
+    notifyStore('cdc_internships');
+    return mapped;
   },
 };

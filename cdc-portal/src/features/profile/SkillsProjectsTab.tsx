@@ -24,6 +24,16 @@ export const SkillsProjectsTab: React.FC = () => {
   const [newSkill, setNewSkill] = useState('');
   const [skillCategory, setSkillCategory] = useState<'technicalSkills' | 'programmingLanguages' | 'toolsAndTechnologies'>('technicalSkills');
 
+  // Add Project / Certification / Achievement state
+  const [projTitle, setProjTitle] = useState('');
+  const [projDesc, setProjDesc] = useState('');
+  const [projTech, setProjTech] = useState('');
+  const [projGithub, setProjGithub] = useState('');
+  const [certTitle, setCertTitle] = useState('');
+  const [certIssuer, setCertIssuer] = useState('');
+  const [certDate, setCertDate] = useState('');
+  const [newAchievement, setNewAchievement] = useState('');
+
   const loadData = async () => {
     const [profile, code] = await Promise.all([
       studentService.getStudentProfile(),
@@ -64,6 +74,75 @@ export const SkillsProjectsTab: React.FC = () => {
   const handleRemoveSkill = async (category: 'technicalSkills' | 'programmingLanguages' | 'toolsAndTechnologies', skillToRemove: string) => {
     const currentSkills = { ...student.skills };
     currentSkills[category] = currentSkills[category].filter(s => s !== skillToRemove);
+    await profileService.updateSkills(currentSkills);
+    await loadData();
+  };
+
+  const handleAddProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projTitle.trim() || !projDesc.trim()) return;
+    const currentSkills = { ...student.skills };
+    const nextProject = {
+      id: `proj-${Date.now()}`,
+      title: projTitle.trim(),
+      description: projDesc.trim(),
+      technologies: projTech.split(',').map(s => s.trim()).filter(Boolean),
+      githubUrl: projGithub.trim() || undefined,
+      featured: true,
+    };
+    currentSkills.projects = [...(currentSkills.projects || []), nextProject];
+    await profileService.updateSkills(currentSkills);
+    setProjTitle('');
+    setProjDesc('');
+    setProjTech('');
+    setProjGithub('');
+    await loadData();
+    showToast({ type: 'success', title: 'Project Saved', message: `${nextProject.title} added to profile.` });
+  };
+
+  const handleRemoveProject = async (id: string) => {
+    const currentSkills = { ...student.skills };
+    currentSkills.projects = (currentSkills.projects || []).filter(p => p.id !== id);
+    await profileService.updateSkills(currentSkills);
+    await loadData();
+  };
+
+  const handleAddCert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!certTitle.trim() || !certIssuer.trim()) return;
+    const currentSkills = { ...student.skills };
+    currentSkills.certifications = [
+      ...(currentSkills.certifications || []),
+      { id: `cert-${Date.now()}`, title: certTitle.trim(), issuer: certIssuer.trim(), issueDate: certDate.trim() || '2026' },
+    ];
+    await profileService.updateSkills(currentSkills);
+    setCertTitle('');
+    setCertIssuer('');
+    setCertDate('');
+    await loadData();
+    showToast({ type: 'success', title: 'Certification Added', message: 'Saved to profile.' });
+  };
+
+  const handleRemoveCert = async (id: string) => {
+    const currentSkills = { ...student.skills };
+    currentSkills.certifications = (currentSkills.certifications || []).filter(c => c.id !== id);
+    await profileService.updateSkills(currentSkills);
+    await loadData();
+  };
+
+  const handleAddAchievement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAchievement.trim()) return;
+    const currentSkills = { ...student.skills };
+    currentSkills.achievements = [...(currentSkills.achievements || []), newAchievement.trim()];
+    await profileService.updateSkills(currentSkills);
+    setNewAchievement('');
+    await loadData();
+  };
+
+  const handleRemoveAchievement = async (idx: number) => {
+    const currentSkills = { ...student.skills };
+    currentSkills.achievements = (currentSkills.achievements || []).filter((_, i) => i !== idx);
     await profileService.updateSkills(currentSkills);
     await loadData();
   };
@@ -220,8 +299,20 @@ export const SkillsProjectsTab: React.FC = () => {
       </div>
 
       {/* 3. Projects Showcase */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs">
-        <h3 className="text-base font-bold text-[#142B4A] mb-4">Featured Technical Projects</h3>
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-base font-bold text-[#142B4A]">Featured Technical Projects</h3>
+        </div>
+
+        <form onSubmit={handleAddProject} className="grid grid-cols-1 md:grid-cols-4 gap-2.5 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+          <input required value={projTitle} onChange={e => setProjTitle(e.target.value)} placeholder="Project Title" className="p-2 border border-slate-300 rounded-lg bg-white" />
+          <input required value={projDesc} onChange={e => setProjDesc(e.target.value)} placeholder="Brief technical summary" className="p-2 border border-slate-300 rounded-lg bg-white" />
+          <input value={projTech} onChange={e => setProjTech(e.target.value)} placeholder="Tech stack (React, Laravel...)" className="p-2 border border-slate-300 rounded-lg bg-white" />
+          <div className="flex gap-2">
+            <input value={projGithub} onChange={e => setProjGithub(e.target.value)} placeholder="GitHub URL (opt)" className="flex-1 p-2 border border-slate-300 rounded-lg bg-white min-w-0" />
+            <button type="submit" className="px-3 py-2 bg-[#2855A6] text-white font-bold rounded-lg shrink-0">+ Add</button>
+          </div>
+        </form>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {student.skills.projects.map(proj => (
@@ -232,11 +323,9 @@ export const SkillsProjectsTab: React.FC = () => {
               <div>
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <h4 className="text-xs font-bold text-[#142B4A] line-clamp-1">{proj.title}</h4>
-                  {proj.featured && (
-                    <span className="text-[9px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
-                      Featured
-                    </span>
-                  )}
+                  <button type="button" onClick={() => handleRemoveProject(proj.id)} className="text-slate-400 hover:text-rose-600" title="Remove project">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
                 <p className="text-[11px] text-slate-600 line-clamp-3 mb-3">{proj.description}</p>
               </div>
@@ -285,35 +374,59 @@ export const SkillsProjectsTab: React.FC = () => {
 
       {/* 4. Certifications & Achievements */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs">
-          <h3 className="text-sm font-bold text-[#142B4A] uppercase tracking-wider mb-3 flex items-center gap-2">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs space-y-3">
+          <h3 className="text-sm font-bold text-[#142B4A] uppercase tracking-wider flex items-center gap-2">
             <Award className="w-4 h-4 text-[#2855A6]" />
             Official Certifications
           </h3>
 
+          <form onSubmit={handleAddCert} className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <input required value={certTitle} onChange={e => setCertTitle(e.target.value)} placeholder="Certificate title" className="p-2 border border-slate-300 rounded-lg" />
+            <input required value={certIssuer} onChange={e => setCertIssuer(e.target.value)} placeholder="Issuer (AWS, NPTEL)" className="p-2 border border-slate-300 rounded-lg" />
+            <div className="flex gap-1.5">
+              <input value={certDate} onChange={e => setCertDate(e.target.value)} placeholder="2026" className="w-20 p-2 border border-slate-300 rounded-lg" />
+              <button type="submit" className="flex-1 px-3 py-2 bg-[#2855A6] text-white font-bold rounded-lg">Add</button>
+            </div>
+          </form>
+
           <div className="space-y-3">
             {student.skills.certifications.map(cert => (
-              <div key={cert.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/50">
-                <h4 className="text-xs font-bold text-[#142B4A]">{cert.title}</h4>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  Issued by <strong>{cert.issuer}</strong> · {cert.issueDate}
-                </p>
+              <div key={cert.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex items-start justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#142B4A]">{cert.title}</h4>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Issued by <strong>{cert.issuer}</strong> · {cert.issueDate}
+                  </p>
+                </div>
+                <button type="button" onClick={() => handleRemoveCert(cert.id)} className="text-slate-400 hover:text-rose-600">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs">
-          <h3 className="text-sm font-bold text-[#142B4A] uppercase tracking-wider mb-3 flex items-center gap-2">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs space-y-3">
+          <h3 className="text-sm font-bold text-[#142B4A] uppercase tracking-wider flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" />
             Key Honours & Achievements
           </h3>
 
+          <form onSubmit={handleAddAchievement} className="flex gap-2 text-xs">
+            <input required value={newAchievement} onChange={e => setNewAchievement(e.target.value)} placeholder="Add hackathon, award, or merit honour..." className="flex-1 p-2 border border-slate-300 rounded-lg" />
+            <button type="submit" className="px-3 py-2 bg-[#2855A6] text-white font-bold rounded-lg">Add</button>
+          </form>
+
           <ul className="space-y-2.5 text-xs text-slate-700">
             {student.skills.achievements.map((ach, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
-                <span>{ach}</span>
+              <li key={idx} className="flex items-start justify-between gap-2">
+                <span className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                  <span>{ach}</span>
+                </span>
+                <button type="button" onClick={() => handleRemoveAchievement(idx)} className="text-slate-400 hover:text-rose-600 shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </li>
             ))}
           </ul>

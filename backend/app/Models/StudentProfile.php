@@ -64,4 +64,9 @@ class StudentProfile extends Model
     {
         return $this->hasMany(StudentCodingSolve::class);
     }
+
+    public function mentoringRemarks(): HasMany
+    {
+        return $this->hasMany(MentoringRemark::class);
+    }
 }

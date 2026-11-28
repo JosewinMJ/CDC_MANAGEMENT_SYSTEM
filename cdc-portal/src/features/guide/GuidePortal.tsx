@@ -8,11 +8,11 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../services/apiClient';
 import { InternshipTrack } from '../../shared/types';
-import { formatDate } from '../../shared/utils';
 import {
-  card, DefinitionCard, Empty, EventCard, field, Filters, GuideCalendar, PageHeading, RecordLink,
+  card, Empty, EventCard, field, Filters, GuideCalendar, PageHeading, RecordLink,
   ReviewBadge, ReviewCard, secondary, SectionHeader,
 } from './GuidePanels';
+import { GuideMenteeDetail } from './GuideMenteeDetail';
 import { GuideAllocation, GuideDocuments, ReviewDetail, ReviewQueue } from './GuideReviews';
 import { Feedback, GuideCoding, GuideNotices } from './GuideTools';
 import {
@@ -120,14 +120,14 @@ export function GuidePortal() {
           <Route path="dashboard" element={loadPortal((data, reviews) => <GuideOverview data={data} submissions={reviews} events={events} />)} />
           <Route path="students" element={loadPortal((data, reviews) => <MenteeRoster mentees={data.mentees} submissions={reviews} />)} />
           <Route path="students/allocation" element={loadPortal((data, reviews) => <GuideAllocation mentees={data.mentees} submissions={reviews} />)} />
-          <Route path="students/:id" element={loadPortal((data, reviews) => <MenteeRecord mentees={data.mentees} submissions={reviews} />)} />
+          <Route path="students/:id" element={<MenteeRecordRoute />} />
           <Route path="internships" element={loadPortal((_data, reviews) => <ReviewQueue submissions={reviews} />)} />
           <Route path="internships/:id" element={loadPortal((data, reviews) => <ReviewDetail submissions={reviews} mentees={data.mentees} onReview={updateReview} onRefresh={retry} />)} />
           <Route path="internships/:id/documents" element={loadPortal((data, reviews) => <ReviewDetail submissions={reviews} mentees={data.mentees} onReview={updateReview} onRefresh={retry} showDocuments />)} />
           <Route path="calendar" element={loadPortal(() => <GuideCalendar events={events} />)} />
           <Route path="documents" element={loadPortal(data => <GuideDocuments documents={data.documents} onVerified={removeVerifiedDocument} />)} />
           <Route path="coding" element={<GuideCoding />} />
-          <Route path="notices" element={<GuideNotices />} />
+          <Route path="notices" element={loadPortal(data => <GuideNotices mentees={data.mentees} />)} />
           <Route path="profile" element={<GuideProfile name={currentUser.name} email={currentUser.email} count={dashboard?.mentees.length} signingOut={signingOut} onSignOut={signOut} />} />
           <Route path="*" element={<div className="space-y-4"><PageHeading title="Guide page unavailable" back="/guide/dashboard" /><Empty>Choose a section from the Guide Portal navigation.</Empty></div>} />
         </Routes>
@@ -242,47 +242,21 @@ function MenteeRoster({ mentees, submissions }: { mentees: Mentee[]; submissions
     {track === InternshipTrack.TRACK_3_SEMESTER && <Filters label="Flexible internship semester" selected={semester}
       options={[{ value: 'all', label: 'All semesters' }, { value: 'even', label: 'Even' }, { value: 'odd', label: 'Odd' }]} onChange={setSemester} />}
     {listed.length ? <div className="grid gap-3 md:grid-cols-2">
-      {listed.map(({ student, internship }) => <RecordLink key={student.id} to={`/guide/students/${student.id}`} title={student.user.name}
-        description={`Reg. ${student.reg_number} · Semester ${student.semester}`}
-        detail={internship ? `${trackTitle(internship.track)} · ${internship.company_name}` : undefined}
-        badge={internship && <ReviewBadge submission={internship} />} />)}
+      {listed.map(({ student, internship }) => {
+        const missingResume = !(student.documents || []).some(d => d.category === 'Resume');
+        return <RecordLink key={student.id} to={`/guide/students/${student.id}`} title={student.user.name}
+          description={`Reg. ${student.reg_number} · Semester ${student.semester}${missingResume ? ' · Missing Resume' : ''}`}
+          detail={internship ? `${trackTitle(internship.track)} · ${internship.company_name}` : undefined}
+          badge={internship && <ReviewBadge submission={internship} />} />;
+      })}
     </div> : <Empty>No assigned students match this view.</Empty>}
     <RecordLink to="/guide/students/allocation" title="Guide allocation" description="View assigned guides and review decisions" />
   </div>;
 }
 
-function MenteeRecord({ mentees, submissions }: { mentees: Mentee[]; submissions: InternshipSubmission[] }) {
+function MenteeRecordRoute() {
   const { id } = useParams();
-  const student = mentees.find(item => String(item.id) === id);
-  if (!student) return <div className="space-y-4">
-    <PageHeading title="Student unavailable" back="/guide/students" />
-    <Empty>This student is unavailable in your assigned roster.</Empty>
-  </div>;
-  const history = submissions.filter(item => item.student_profile_id === student.id);
-  const latest = history[0];
-  return <div className="space-y-4">
-    <PageHeading title={student.user.name} description={`Reg. ${student.reg_number} · Semester ${student.semester}`} back="/guide/students" />
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-      <div className="space-y-3">
-        <DefinitionCard title="Academic record" items={[
-          ['Programme', student.programme], ['Branch', student.branch], ['CGPA', student.current_cgpa],
-          ['Placement', <StatusBadge key="placement" status={student.placement_status} />],
-          ['Verification', <StatusBadge key="verification" status={student.verification_status} />],
-        ]} />
-        {latest && <DefinitionCard title="Latest internship" badge={<ReviewBadge submission={latest} />} items={[
-          ['Company', latest.company_name], ['Job role', latest.job_role], ['Contact', latest.company_contact_number],
-          ['Address', latest.company_address], ['Mode', latest.mode],
-          ['Duration', `${latest.duration_weeks} weeks · ${formatDate(latest.start_date)} – ${formatDate(latest.end_date)}`],
-          ['Stipend', latest.is_stipend ? (latest.stipend_amount == null ? 'Yes' : `${latest.stipend_currency}${latest.stipend_amount.toLocaleString('en-IN')}`) : 'No'],
-        ]} />}
-      </div>
-      <section className="space-y-3">
-        <SectionHeader title="Internship submissions" />
-        {history.length ? history.map(submission => <ReviewCard key={submission.id} submission={submission} />)
-          : <Empty>No internship submissions recorded for this student.</Empty>}
-      </section>
-    </div>
-  </div>;
+  return <GuideMenteeDetail studentId={id} />;
 }
 
 function GuideProfile({ name, email, count, signingOut, onSignOut }: {
@@ -294,8 +268,7 @@ function GuideProfile({ name, email, count, signingOut, onSignOut }: {
       <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-[#EAF2FF] text-[#2855A6]"><UserRound size={20} /></span>
       <div className="min-w-0 wrap-break-word"><p className="font-bold text-[#142B4A]">{name}</p><p className="text-sm text-slate-600">{email}</p></div>
     </div>
-    <DefinitionCard title="Guide workspace" items={[[ 'Role', 'Faculty guide' ], [ 'Assigned students', count ]]} />
-    <RecordLink to="/guide/students" title="View assigned students" />
+    <RecordLink to="/guide/students" title="View assigned students" description={`${count ?? 0} students assigned`} />
     {toolsNavigation.map(tool => <RecordLink key={tool.to} to={tool.to} icon="file" title={tool.title} />)}
     <button type="button" onClick={onSignOut} disabled={signingOut} className={`${secondary} gap-2`}><LogOut size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}</button>
   </div>;

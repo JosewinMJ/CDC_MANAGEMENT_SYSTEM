@@ -8,10 +8,13 @@ use App\Models\AuditLog;
 use App\Models\CalendarEvent;
 use App\Models\CodingQuestion;
 use App\Models\Company;
+use App\Models\ConsultancyRecord;
 use App\Models\FacultyProfile;
 use App\Models\Internship;
 use App\Models\Interview;
 use App\Models\JobRole;
+use App\Models\MentoringRemark;
+use App\Models\Mou;
 use App\Models\Notice;
 use App\Models\ParentAlert;
 use App\Models\StudentCodingSolve;
@@ -312,6 +315,44 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
+        $intel = Company::create([
+            'slug_code' => 'comp-intel',
+            'name' => 'Intel India',
+            'industry' => 'Semiconductors & Systems',
+            'tier' => 'core',
+            'description' => 'Build low-level device drivers, UEFI firmware, and system tools.',
+            'website' => 'https://www.intel.in',
+            'hr_name' => 'Vikram Menon',
+            'hr_email' => 'campus@intel.example',
+            'location' => 'Bengaluru',
+            'application_deadline' => now()->addDays(14)->toDateString(),
+            'departments' => ['CSE', 'ECE', 'IT'],
+            'academic_year' => '2026-2027',
+        ]);
+
+        JobRole::create([
+            'company_id' => $intel->id,
+            'role_code' => 'role-intel-intern',
+            'role_title' => 'Systems Software & Firmware Intern',
+            'package_ctc' => 'Internship',
+            'package_lpa' => 5.40,
+            'stipend' => '₹45,000 / month',
+            'job_type' => 'Internship',
+            'work_location' => 'Bengaluru (Hybrid)',
+            'description' => 'Work with systems engineering teams on Linux kernel and edge firmware.',
+            'required_skills' => ['C / C++', 'Linux', 'Operating Systems'],
+            'eligibility_criteria' => [
+                'minCgpa' => 7.5,
+                'minTenthMarks' => 70,
+                'minTwelfthMarks' => 70,
+                'maxActiveBacklogs' => 0,
+                'maxHistoricalBacklogs' => 2,
+                'allowedBranches' => ['CSE', 'ECE', 'IT'],
+                'allowedDegrees' => ['B.Tech'],
+                'allowedGraduationYears' => [2027],
+            ],
+        ]);
+
         // 6. Applications
         Application::create([
             'student_profile_id' => $snehaProfile->id,
@@ -460,6 +501,41 @@ class DatabaseSeeder extends Seeder
             'scheduled_date' => now()->addDays(15)->toDateString(),
             'delivery_status' => 'SCHEDULED',
             'sample_message' => 'CDC Alert: Your ward Sneha R is eligible for Razorpay (21.0 LPA). Please remind them to apply before the deadline.',
+        ]);
+
+        MentoringRemark::create([
+            'student_profile_id' => $snehaProfile->id,
+            'author_user_id' => $guide1->id,
+            'author_name' => $guide1->name,
+            'author_role' => 'GUIDE',
+            'category' => 'mentoring',
+            'remark' => 'Strong coding consistency; prepare system design case studies for dream roles.',
+            'is_confidential' => true,
+        ]);
+
+        Mou::create([
+            'organization_name' => 'Infosys Limited',
+            'agreement_date' => '2026-07-01',
+            'expiry_date' => '2029-06-30',
+            'contact_person' => 'Ananya Rao',
+            'contact_email' => 'campus@infosys.example',
+            'collaboration_type' => 'Placements, Internships & Faculty FDP',
+            'agreement_doc_name' => 'Infosys_University_MOU_2026.pdf',
+            'status' => 'Active',
+            'academic_year' => '2026-2027',
+            'notes' => 'Covers Specialist Programmer & Summer Internship cohorts.',
+        ]);
+
+        ConsultancyRecord::create([
+            'industry_partner' => 'Bosch Global Software Technologies',
+            'project_title' => 'AI Anomaly Detection for Automotive Telemetry',
+            'project_details' => 'Applied ML model benchmarking with CSE research lab.',
+            'faculty_coordinator' => $guide1->name,
+            'faculty_user_id' => $guide1->id,
+            'duration' => '6 Months',
+            'supporting_doc_name' => 'Bosch_Consultancy_Proposal.pdf',
+            'status' => 'Ongoing',
+            'academic_year' => '2026-2027',
         ]);
 
         AuditLog::create([

@@ -10,10 +10,12 @@ use App\Models\Company;
 use App\Models\Internship;
 use App\Models\Interview;
 use App\Models\JobRole;
+use App\Models\MentoringRemark;
 use App\Models\Notice;
 use App\Models\ParentAlert;
 use App\Models\StudentProfile;
 use App\Services\AuditService;
+use App\Services\EligibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,23 +151,7 @@ class StudentPortalController extends Controller
         $role = JobRole::where('id', $data['roleId'])->orWhere('role_code', $data['roleId'])->firstOrFail();
         $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
 
-        $c = $role->eligibility_criteria;
-        $codingSolved = (int)($profile->coding_stats['totalSolved'] ?? 0);
-
-        $checks = [
-            'cgpa' => ['studentValue' => $profile->current_cgpa, 'requiredValue' => ($c['minCgpa'] ?? 0) . ' minimum', 'passed' => $profile->current_cgpa >= ($c['minCgpa'] ?? 0)],
-            'tenthMarks' => ['studentValue' => $profile->tenth_percentage . '%', 'requiredValue' => ($c['minTenthMarks'] ?? 0) . '% minimum', 'passed' => $profile->tenth_percentage >= ($c['minTenthMarks'] ?? 0)],
-            'twelfthMarks' => ['studentValue' => $profile->twelfth_percentage . '%', 'requiredValue' => ($c['minTwelfthMarks'] ?? 0) . '% minimum', 'passed' => $profile->twelfth_percentage >= ($c['minTwelfthMarks'] ?? 0)],
-            'activeBacklogs' => ['studentValue' => $profile->active_backlogs, 'requiredValue' => ($c['maxActiveBacklogs'] ?? 0) . ' max', 'passed' => $profile->active_backlogs <= ($c['maxActiveBacklogs'] ?? 0)],
-            'branch' => ['studentValue' => $profile->branch, 'requiredValue' => implode(', ', $c['allowedBranches'] ?? ['ALL']), 'passed' => empty($c['allowedBranches']) || in_array($profile->branch, $c['allowedBranches'], true)],
-            'codingPractice' => ['studentValue' => "{$codingSolved} solved", 'requiredValue' => ($c['minCodingProblemsSolved'] ?? 0) . ' minimum', 'passed' => $codingSolved >= ($c['minCodingProblemsSolved'] ?? 0)],
-            'academicVerification' => ['studentValue' => $profile->verification_status, 'requiredValue' => 'VERIFIED', 'passed' => $profile->verification_status === 'VERIFIED'],
-        ];
-
-        $allPassed = collect($checks)->every(fn ($x) => $x['passed']);
-        $overall = $profile->verification_status !== 'VERIFIED' ? 'PENDING_VERIFICATION' : ($allPassed ? 'ELIGIBLE' : 'NOT_ELIGIBLE');
-
-        return response()->json(['overallStatus' => $overall, 'criteriaBreakdown' => $checks]);
+        return response()->json(EligibilityService::evaluate($profile, $role));
     }
 
     public function myApplications(Request $request): JsonResponse
@@ -316,11 +302,104 @@ class StudentPortalController extends Controller
         }
     }
 
+    public function internshipOpportunities(): JsonResponse
+    {
+        $companies = Company::with(['roles' => fn ($q) => $q->whereIn('job_type', ['Internship', 'Internship + Full-time'])->where('status', 'open')])
+            ->whereHas('roles', fn ($q) => $q->whereIn('job_type', ['Internship', 'Internship + Full-time'])->where('status', 'open'))
+            ->orderBy('application_deadline')
+            ->get();
+
+        return response()->json($companies);
+    }
+
+    public function submitCompletion(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'certificate' => ['required', ...StudentDocumentController::FILE_RULES],
+            'report' => ['required', ...StudentDocumentController::FILE_RULES],
+        ]);
+
+        $profile = $request->user()->studentProfile()->firstOrFail();
+        $paths = [];
+        try {
+            return DB::transaction(function () use ($id, $profile, $request, &$paths) {
+                $internship = $profile->internships()->lockForUpdate()->findOrFail($id);
+                abort_unless(
+                    in_array($internship->status, ['APPROVED', 'IN_PROGRESS'], true),
+                    409,
+                    'Completion evidence can only be submitted for approved or in-progress internships.'
+                );
+
+                $documents = $internship->documents ?? [];
+                foreach (['certificate' => 'Completion Certificate', 'report' => 'Internship Report'] as $field => $category) {
+                    $doc = StudentDocumentController::saveUpload($profile, $request->file($field), $category, $paths, $internship);
+                    $documents[] = [
+                        'id' => (string) $doc->id,
+                        'name' => $doc->name,
+                        'category' => $category,
+                        'fileUrl' => $doc->file_url,
+                        'fileSize' => $doc->file_size,
+                        'uploadDate' => now()->toDateString(),
+                        'verificationStatus' => $doc->verification_status,
+                    ];
+                }
+
+                $internship->update([
+                    'documents' => $documents,
+                    'status' => 'COMPLETED',
+                ]);
+
+                AuditService::log(
+                    'INTERNSHIP_COMPLETED',
+                    'Internship',
+                    (string)$internship->id,
+                    'Submitted completion certificate & final report',
+                    null,
+                    $request
+                );
+
+                return response()->json($internship->fresh('facultyGuide:id,name,email'));
+            });
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($paths);
+            throw $error;
+        }
+    }
+
+    public function mentoringRequests(Request $request): JsonResponse
+    {
+        $profile = StudentProfile::where('user_id', $request->user()->id)->firstOrFail();
+        return response()->json(
+            MentoringRemark::where('student_profile_id', $profile->id)
+                ->where('is_confidential', false)
+                ->latest()
+                ->get()
+        );
+    }
+
     public function notices(Request $request): JsonResponse
     {
-        $role = $request->user()->role;
+        $user = $request->user();
+        $role = $user->role;
         $scope = $role === 'STUDENT' ? ['all', 'student'] : ($role === 'GUIDE' ? ['all', 'guide'] : ['all', 'student', 'guide']);
-        return response()->json(Notice::whereIn('target_portal', $scope)->latest()->get());
+
+        $query = Notice::whereIn('target_portal', $scope)
+            ->where(fn ($q) => $q->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', now()->toDateString()));
+
+        if ($role === 'STUDENT') {
+            $profile = StudentProfile::where('user_id', $user->id)->first();
+            if ($profile) {
+                $query->where(fn ($q) => $q->whereNull('target_student_profile_id')->orWhere('target_student_profile_id', $profile->id));
+                $query->where(fn ($q) => $q->whereNull('target_academic_year')->orWhere('target_academic_year', $profile->academic_year));
+                $list = $query->latest()->get()->filter(function ($n) use ($profile) {
+                    $branches = $n->target_branches ?? [];
+                    return empty($branches) || in_array('ALL', $branches, true) || in_array($profile->branch, $branches, true);
+                })->values();
+                return response()->json($list);
+            }
+        }
+
+        return response()->json($query->latest()->get());
     }
 
     public function markNoticeRead(Request $request, int $id): JsonResponse

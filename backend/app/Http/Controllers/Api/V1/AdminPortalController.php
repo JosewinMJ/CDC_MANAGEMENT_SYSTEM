@@ -12,9 +12,11 @@ use App\Models\FacultyProfile;
 use App\Models\Internship;
 use App\Models\JobRole;
 use App\Models\Notice;
+use App\Models\StudentDocument;
 use App\Models\StudentProfile;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\EligibilityService;
 use App\Services\SpreadsheetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,15 +27,26 @@ use Illuminate\Support\Str;
 
 class AdminPortalController extends Controller
 {
-    public function dashboard(): JsonResponse
+    public function dashboard(Request $request): JsonResponse
     {
-        $totalStudents = StudentProfile::count();
-        $placedStudents = StudentProfile::where('placement_status', 'placed')->count();
-        $shortlisted = StudentProfile::where('placement_status', 'shortlisted')->count();
-        $avgLpa = round((float)(StudentProfile::where('package_lpa', '>', 0)->avg('package_lpa') ?? 0), 2);
-        $maxLpa = round((float)(StudentProfile::max('package_lpa') ?? 0), 2);
+        $year = trim((string)$request->query('academic_year', ''));
+        $stuQuery = StudentProfile::query()->when($year !== '' && $year !== 'ALL', fn ($q) => $q->where('academic_year', $year));
+        $appQuery = Application::query()->when($year !== '' && $year !== 'ALL', fn ($q) => $q->where('academic_year', $year));
+        $intQuery = Internship::query()->when($year !== '' && $year !== 'ALL', fn ($q) => $q->where('academic_year', $year));
+        $compQuery = Company::query()->when($year !== '' && $year !== 'ALL', fn ($q) => $q->where('academic_year', $year));
 
-        $deptStats = StudentProfile::select('branch', DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN placement_status='placed' THEN 1 ELSE 0 END) as placed"))
+        $totalStudents = (clone $stuQuery)->count();
+        $placedStudents = (clone $stuQuery)->where('placement_status', 'placed')->count();
+        $shortlisted = (clone $stuQuery)->where('placement_status', 'shortlisted')->count();
+        $avgLpa = round((float)((clone $stuQuery)->where('package_lpa', '>', 0)->avg('package_lpa') ?? 0), 2);
+        $maxLpa = round((float)((clone $stuQuery)->max('package_lpa') ?? 0), 2);
+
+        $incompleteProfiles = (clone $stuQuery)
+            ->where(fn ($q) => $q->where('verification_status', '!=', 'VERIFIED')
+                ->orWhereDoesntHave('documents', fn ($d) => $d->where('category', 'Resume')))
+            ->count();
+
+        $deptStats = (clone $stuQuery)->select('branch', DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN placement_status='placed' THEN 1 ELSE 0 END) as placed"))
             ->groupBy('branch')
             ->orderByDesc('total')
             ->get();
@@ -47,26 +60,45 @@ class AdminPortalController extends Controller
                 'avgLpa' => $avgLpa,
                 'maxLpa' => $maxLpa,
                 'totalFaculty' => FacultyProfile::count(),
-                'totalCompanies' => Company::count(),
-                'totalApplications' => Application::count(),
+                'totalCompanies' => (clone $compQuery)->count(),
+                'upcomingDrives' => (clone $compQuery)->whereDate('application_deadline', '>=', now()->toDateString())->count(),
+                'totalApplications' => (clone $appQuery)->count(),
                 'pendingCorrections' => AcademicCorrection::where('status', 'PENDING')->count(),
-                'pendingInternships' => Internship::whereIn('status', ['PENDING_GUIDE_REVIEW', 'PENDING_CDC_APPROVAL'])->count(),
+                'pendingInternships' => (clone $intQuery)->whereIn('status', ['PENDING_GUIDE_REVIEW', 'PENDING_CDC_APPROVAL'])->count(),
+                'pendingDocuments' => StudentDocument::where('verification_status', 'PENDING_VERIFICATION')->count(),
+                'incompleteProfiles' => $incompleteProfiles,
+                'completedInternships' => (clone $intQuery)->where('status', 'COMPLETED')->count(),
+                'ppoConversions' => (clone $intQuery)->where('ppo_converted', true)->count(),
             ],
             'departmentBreakdown' => $deptStats,
             'recentAudits' => AuditLog::latest()->limit(10)->get(),
             'recentSyncs' => DataSyncLog::latest()->limit(8)->get(),
+            'academicYears' => ['ALL', '2024-2025', '2025-2026', '2026-2027'],
         ]);
     }
 
     public function students(Request $request): JsonResponse
     {
         $q = trim((string)$request->query('q', ''));
-        $students = StudentProfile::with(['user:id,name,email,phone,department,is_active', 'assignedGuide:id,name,email'])
+        $branch = trim((string)$request->query('branch', ''));
+        $year = trim((string)$request->query('academic_year', ''));
+        $guideId = trim((string)$request->query('guide_id', ''));
+
+        $students = StudentProfile::with([
+            'user:id,name,email,phone,department,is_active',
+            'assignedGuide:id,name,email',
+            'documents:id,student_profile_id,name,category,verification_status,file_url',
+        ])
             ->when($q !== '', function ($query) use ($q) {
-                $query->where('reg_number', 'like', "%{$q}%")
-                    ->orWhere('branch', 'like', "%{$q}%")
-                    ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$q}%")->orWhere('email', 'like', "%{$q}%"));
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('reg_number', 'like', "%{$q}%")
+                        ->orWhere('branch', 'like', "%{$q}%")
+                        ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$q}%")->orWhere('email', 'like', "%{$q}%"));
+                });
             })
+            ->when($branch !== '' && $branch !== 'ALL', fn ($query) => $query->where('branch', strtoupper($branch)))
+            ->when($year !== '' && $year !== 'ALL', fn ($query) => $query->where('academic_year', $year))
+            ->when($guideId !== '', fn ($query) => $query->where('assigned_guide_id', $guideId))
             ->orderBy('branch')
             ->orderBy('reg_number')
             ->get();
@@ -167,7 +199,31 @@ class AdminPortalController extends Controller
 
     public function faculty(): JsonResponse
     {
-        return response()->json(FacultyProfile::with('user:id,name,email,phone,department,is_active')->orderBy('employee_id')->get());
+        $list = FacultyProfile::with([
+            'user:id,name,email,phone,department,is_active',
+            'user.mentoredStudents:id,assigned_guide_id,reg_number,branch,placement_status',
+            'user.mentoredStudents.user:id,name',
+        ])->orderBy('employee_id')->get();
+        return response()->json($list);
+    }
+
+    public function updateFaculty(Request $request, int $id): JsonResponse
+    {
+        $fac = FacultyProfile::with('user')->findOrFail($id);
+        $data = $request->validate([
+            'designation' => ['sometimes', 'string', 'max:100'],
+            'coordinator_role' => ['sometimes', 'in:tpo_head,dept_coordinator,placement_faculty,faculty_guide,trainer'],
+            'assigned_batches' => ['nullable', 'string', 'max:120'],
+            'can_manage_drives' => ['sometimes', 'boolean'],
+            'can_verify_students' => ['sometimes', 'boolean'],
+            'portal_active' => ['sometimes', 'boolean'],
+        ]);
+        $fac->update($data);
+        if (array_key_exists('portal_active', $data)) {
+            $fac->user->update(['is_active' => $data['portal_active']]);
+        }
+        AuditService::log('ADMIN_UPDATED_FACULTY', 'FacultyProfile', (string)$fac->id, "Updated permissions for {$fac->employee_id}", null, $request);
+        return response()->json($fac->fresh('user'));
     }
 
     public function storeFaculty(Request $request): JsonResponse
@@ -214,44 +270,64 @@ class AdminPortalController extends Controller
             'name' => ['required', 'string', 'max:160'],
             'industry' => ['required', 'string', 'max:100'],
             'tier' => ['in:super_dream,dream,core,startup,mass'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'website' => ['nullable', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:120'],
             'hr_name' => ['nullable', 'string', 'max:120'],
             'hr_email' => ['nullable', 'email'],
             'application_deadline' => ['required', 'date'],
+            'academic_year' => ['nullable', 'string', 'max:20'],
             'role_title' => ['required', 'string', 'max:140'],
+            'job_type' => ['in:Full-time,Internship,Internship + Full-time'],
             'package_lpa' => ['required', 'numeric', 'min:0'],
+            'stipend' => ['nullable', 'string', 'max:60'],
+            'bond_period' => ['nullable', 'string', 'max:60'],
             'min_cgpa' => ['numeric', 'min:0', 'max:10'],
+            'min_tenth' => ['numeric', 'min:0', 'max:100'],
+            'min_twelfth' => ['numeric', 'min:0', 'max:100'],
             'max_backlogs' => ['integer', 'min:0'],
+            'max_historical_backlogs' => ['integer', 'min:0'],
+            'min_coding_solved' => ['integer', 'min:0'],
             'allowed_branches' => ['array'],
+            'allowed_degrees' => ['array'],
         ]);
 
         $company = DB::transaction(function () use ($data) {
+            $branches = $data['allowed_branches'] ?? ['CSE', 'IT'];
             $comp = Company::create([
                 'slug_code' => 'comp-' . Str::slug($data['name']) . '-' . rand(100, 999),
                 'name' => $data['name'],
                 'industry' => $data['industry'],
                 'tier' => $data['tier'] ?? 'core',
+                'description' => $data['description'] ?? null,
+                'website' => $data['website'] ?? null,
                 'location' => $data['location'] ?? 'Bengaluru',
                 'hr_name' => $data['hr_name'] ?? null,
                 'hr_email' => $data['hr_email'] ?? null,
                 'application_deadline' => $data['application_deadline'],
-                'departments' => $data['allowed_branches'] ?? ['CSE', 'IT'],
+                'departments' => $branches,
+                'academic_year' => $data['academic_year'] ?? '2026-2027',
             ]);
 
             JobRole::create([
                 'company_id' => $comp->id,
                 'role_code' => 'role-' . Str::slug($data['name']) . '-' . rand(100, 999),
                 'role_title' => $data['role_title'],
+                'job_type' => $data['job_type'] ?? 'Full-time',
                 'package_ctc' => $data['package_lpa'] . ' LPA',
                 'package_lpa' => $data['package_lpa'],
+                'stipend' => $data['stipend'] ?? null,
+                'bond_period' => $data['bond_period'] ?? null,
+                'work_location' => $data['location'] ?? 'Bengaluru',
                 'eligibility_criteria' => [
                     'minCgpa' => $data['min_cgpa'] ?? 7.0,
-                    'minTenthMarks' => 60,
-                    'minTwelfthMarks' => 60,
+                    'minTenthMarks' => $data['min_tenth'] ?? 60,
+                    'minTwelfthMarks' => $data['min_twelfth'] ?? 60,
                     'maxActiveBacklogs' => $data['max_backlogs'] ?? 0,
-                    'maxHistoricalBacklogs' => 2,
-                    'allowedBranches' => $data['allowed_branches'] ?? ['CSE', 'IT'],
-                    'allowedDegrees' => ['B.Tech'],
+                    'maxHistoricalBacklogs' => $data['max_historical_backlogs'] ?? 2,
+                    'minCodingProblemsSolved' => $data['min_coding_solved'] ?? 0,
+                    'allowedBranches' => $branches,
+                    'allowedDegrees' => $data['allowed_degrees'] ?? ['B.Tech'],
                     'allowedGraduationYears' => [2027],
                 ],
             ]);
@@ -261,6 +337,108 @@ class AdminPortalController extends Controller
 
         AuditService::log('ADMIN_CREATED_COMPANY_DRIVE', 'Company', (string)$company->id, "Published {$company->name}", null, $request);
         return response()->json($company->load('roles'), 201);
+    }
+
+    public function updateCompany(Request $request, int $id): JsonResponse
+    {
+        $company = Company::findOrFail($id);
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:160'],
+            'industry' => ['sometimes', 'string', 'max:100'],
+            'tier' => ['sometimes', 'in:super_dream,dream,core,startup,mass'],
+            'location' => ['nullable', 'string', 'max:120'],
+            'application_deadline' => ['sometimes', 'date'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'departments' => ['sometimes', 'array'],
+            'is_verified' => ['sometimes', 'boolean'],
+        ]);
+        $company->update($data);
+        AuditService::log('ADMIN_UPDATED_COMPANY', 'Company', (string)$company->id, "Updated {$company->name}", null, $request);
+        return response()->json($company->fresh('roles'));
+    }
+
+    public function addCompanyRole(Request $request, int $id): JsonResponse
+    {
+        $company = Company::findOrFail($id);
+        $data = $request->validate([
+            'role_title' => ['required', 'string', 'max:140'],
+            'job_type' => ['in:Full-time,Internship,Internship + Full-time'],
+            'package_lpa' => ['required', 'numeric', 'min:0'],
+            'stipend' => ['nullable', 'string', 'max:60'],
+            'work_location' => ['nullable', 'string', 'max:120'],
+            'bond_period' => ['nullable', 'string', 'max:60'],
+            'min_cgpa' => ['numeric', 'min:0', 'max:10'],
+            'max_backlogs' => ['integer', 'min:0'],
+            'allowed_branches' => ['array'],
+        ]);
+        $role = JobRole::create([
+            'company_id' => $company->id,
+            'role_code' => 'role-' . Str::slug($company->name) . '-' . rand(100, 999),
+            'role_title' => $data['role_title'],
+            'job_type' => $data['job_type'] ?? 'Full-time',
+            'package_ctc' => $data['package_lpa'] . ' LPA',
+            'package_lpa' => $data['package_lpa'],
+            'stipend' => $data['stipend'] ?? null,
+            'bond_period' => $data['bond_period'] ?? null,
+            'work_location' => $data['work_location'] ?? ($company->location ?? 'Bengaluru'),
+            'eligibility_criteria' => [
+                'minCgpa' => $data['min_cgpa'] ?? 7.0,
+                'minTenthMarks' => 60,
+                'minTwelfthMarks' => 60,
+                'maxActiveBacklogs' => $data['max_backlogs'] ?? 0,
+                'allowedBranches' => $data['allowed_branches'] ?? ($company->departments ?? ['CSE', 'IT']),
+            ],
+        ]);
+        AuditService::log('ADMIN_ADDED_JOB_ROLE', 'JobRole', (string)$role->id, "{$company->name}: {$role->role_title}", null, $request);
+        return response()->json($role, 201);
+    }
+
+    public function updateJobRole(Request $request, int $id): JsonResponse
+    {
+        $role = JobRole::findOrFail($id);
+        $data = $request->validate([
+            'status' => ['sometimes', 'in:open,upcoming,closed,completed'],
+            'package_lpa' => ['sometimes', 'numeric', 'min:0'],
+            'stipend' => ['nullable', 'string', 'max:60'],
+        ]);
+        if (isset($data['package_lpa'])) {
+            $data['package_ctc'] = $data['package_lpa'] . ' LPA';
+        }
+        $role->update($data);
+        AuditService::log('ADMIN_UPDATED_JOB_ROLE', 'JobRole', (string)$role->id, "Role status/terms updated", null, $request);
+        return response()->json($role->fresh());
+    }
+
+    public function companyEligibilitySummary(int $id): JsonResponse
+    {
+        $company = Company::with('roles')->findOrFail($id);
+        $students = StudentProfile::with('user:id,name,email')->orderBy('reg_number')->get();
+        $role = $company->roles->first();
+        if (!$role) {
+            return response()->json(['company' => $company->name, 'summary' => []]);
+        }
+        $rows = $students->map(function ($s) use ($role) {
+            $eval = EligibilityService::evaluate($s, $role);
+            return [
+                'studentId' => $s->id,
+                'regNumber' => $s->reg_number,
+                'name' => $s->user?->name ?? 'Student',
+                'branch' => $s->branch,
+                'cgpa' => $s->current_cgpa,
+                'status' => $eval['overallStatus'],
+                'reason' => $eval['summaryReason'],
+            ];
+        });
+        return response()->json(['company' => $company->name, 'role' => $role->role_title, 'summary' => $rows]);
+    }
+
+    public function markInternshipPpo(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate(['ppo_converted' => ['required', 'boolean']]);
+        $internship = Internship::findOrFail($id);
+        $internship->update(['ppo_converted' => $data['ppo_converted']]);
+        AuditService::log('ADMIN_UPDATED_PPO_STATUS', 'Internship', (string)$id, 'PPO converted: ' . ($data['ppo_converted'] ? 'Yes' : 'No'), null, $request);
+        return response()->json($internship);
     }
 
     public function applications(): JsonResponse
@@ -333,6 +511,15 @@ class AdminPortalController extends Controller
         return response()->json($ticket->fresh('studentProfile.user:id,name,email'));
     }
 
+    public function notices(): JsonResponse
+    {
+        $list = Notice::latest()->get()->map(function ($n) {
+            $n->read_count = count($n->read_by_student_ids ?? []);
+            return $n;
+        });
+        return response()->json($list);
+    }
+
     public function publishNotice(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -341,6 +528,11 @@ class AdminPortalController extends Controller
             'category' => ['string', 'max:40'],
             'priority' => ['in:Normal,High,Urgent'],
             'target_portal' => ['in:all,student,guide'],
+            'target_branches' => ['nullable', 'array'],
+            'target_academic_year' => ['nullable', 'string', 'max:20'],
+            'target_student_profile_id' => ['nullable', 'integer'],
+            'expiry_date' => ['nullable', 'date'],
+            'attachment_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $notice = Notice::create([
@@ -352,6 +544,11 @@ class AdminPortalController extends Controller
             'priority' => $data['priority'] ?? 'Normal',
             'is_important' => ($data['priority'] ?? 'Normal') !== 'Normal',
             'target_portal' => $data['target_portal'] ?? 'all',
+            'target_branches' => $data['target_branches'] ?? null,
+            'target_academic_year' => $data['target_academic_year'] ?? null,
+            'target_student_profile_id' => $data['target_student_profile_id'] ?? null,
+            'expiry_date' => $data['expiry_date'] ?? null,
+            'attachment_name' => $data['attachment_name'] ?? null,
             'read_by_student_ids' => [],
         ]);
 
